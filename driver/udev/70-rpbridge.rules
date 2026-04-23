@@ -20,10 +20,14 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", \
     MODE="0660", GROUP="plugdev", TAG+="uaccess", \
     SYMLINK+="rpbridge-bootsel"
 
-# The three CDC-ACM virtual serial ports (UART 1, UART 2, Debug Log)
-# become /dev/ttyACM*, which udev already handles. We add per-interface
+# The two CDC-ACM virtual serial ports (UART 1, UART 2) become
+# /dev/ttyACM*, which udev already handles. We add per-interface
 # descriptive symlinks so scripts can address them by role rather than
 # guessing enumeration order.
+#
+# Note: the firmware does NOT expose a USB debug-log CDC. stdio
+# (printf) is wired to UART1 on the 5-pin debug header instead —
+# see firmware/README.md §Debugging.
 SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
     ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
     ATTRS{bInterfaceNumber}=="00", \
@@ -35,9 +39,3 @@ SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
     ATTRS{bInterfaceNumber}=="02", \
     MODE="0660", GROUP="dialout", \
     SYMLINK+="rpbridge-uart2"
-
-SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
-    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
-    ATTRS{bInterfaceNumber}=="04", \
-    MODE="0660", GROUP="dialout", \
-    SYMLINK+="rpbridge-debug"

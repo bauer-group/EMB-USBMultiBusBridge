@@ -149,10 +149,12 @@ Interface  Class              Purpose                 Host driver
 ─────────  ─────────────────  ──────────────────────  ─────────────────────────
 0,1        CDC-ACM × 1        UART 1 virtual COM      usbser / inbox VCP
 2,3        CDC-ACM × 1        UART 2 virtual COM      usbser / inbox VCP
-4,5        CDC-ACM × 1        Debug log virtual COM   usbser / inbox VCP
-6          Vendor (WinUSB)    RPBP control (bulk)     rpbridge.ko / WinUSB
-7          Vendor (WinUSB)    gs_usb CAN (bulk)       gs_usb.ko / candle_api
+4          Vendor (WinUSB)    RPBP control (bulk)     rpbridge.ko / WinUSB
+5          Vendor (WinUSB)    gs_usb CAN (bulk)       gs_usb.ko / candle_api
 ```
+
+The debug log is NOT on a CDC; `stdio` (printf) goes to UART1 on the
+5-pin debug header instead — see the "Debugging" section above.
 
 Windows 10 ≥ 1709 binds WinUSB automatically via the BOS + MS OS 2.0
 descriptor set (see [`src/usb/ms_os_20.c`](src/usb/ms_os_20.c)).
@@ -160,8 +162,8 @@ The two vendor interfaces register distinct `DeviceInterfaceGUIDs`:
 
 | Interface          | DeviceInterfaceGUID                        |
 |--------------------|---------------------------------------------|
-| 6 — RPBP Control   | `{24D7D4F5-FB9F-4B5D-8A1F-69F3C9FE8B23}`    |
-| 7 — gs_usb CAN     | `{8F3B2E41-5A6C-4D7E-9F1A-2B3C4D5E6F70}`    |
+| 4 — RPBP Control   | `{24D7D4F5-FB9F-4B5D-8A1F-69F3C9FE8B23}`    |
+| 5 — gs_usb CAN     | `{8F3B2E41-5A6C-4D7E-9F1A-2B3C4D5E6F70}`    |
 
 ## Source tree
 

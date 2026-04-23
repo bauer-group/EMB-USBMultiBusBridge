@@ -31,7 +31,15 @@ extern "C" {
 #define CFG_TUD_ENABLED           1
 #define CFG_TUD_ENDPOINT0_SIZE    64
 
-#define CFG_TUD_CDC               3
+/*
+ * Two CDC-ACMs = two user virtual COM ports:
+ *   index 0 -> UART 1 (UART0 HW phy-bank: RS232 / RS485 / TTL)
+ *   index 1 -> UART 2 (PIO-UART #2 on GP33/GP36)
+ *
+ * We deliberately do NOT expose a USB debug-log CDC — stdio is routed
+ * to UART1 on the 5-pin debug header instead (see CMakeLists.txt).
+ */
+#define CFG_TUD_CDC               2
 #define CFG_TUD_VENDOR            2   /* RPBP transport + gs_usb */
 #define CFG_TUD_HID               0
 #define CFG_TUD_MSC               0

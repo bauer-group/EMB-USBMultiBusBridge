@@ -61,14 +61,12 @@ uint8_t const *tud_descriptor_device_cb(void)
 /* ───── Configuration descriptor ─────────────────────────────────────── */
 
 enum {
-    ITF_CDC_0     = 0,
+    ITF_CDC_0     = 0,     /* user UART 1 (phy-bank: RS232/RS485/TTL) */
     ITF_CDC_0_DATA,
-    ITF_CDC_1,
+    ITF_CDC_1,             /* user UART 2 (PIO-UART #2)                */
     ITF_CDC_1_DATA,
-    ITF_CDC_2,
-    ITF_CDC_2_DATA,
-    ITF_VENDOR_CTRL,
-    ITF_VENDOR_CAN,
+    ITF_VENDOR_CTRL,       /* RPBP control pipe                        */
+    ITF_VENDOR_CAN,        /* gs_usb CAN pipe                          */
     ITF_TOTAL
 };
 
@@ -80,18 +78,14 @@ enum {
 #define EPNUM_CDC_1_OUT     0x04
 #define EPNUM_CDC_1_IN      0x84
 
-#define EPNUM_CDC_2_NOTIF   0x85
-#define EPNUM_CDC_2_OUT     0x06
-#define EPNUM_CDC_2_IN      0x86
+#define EPNUM_VCTRL_OUT     0x05
+#define EPNUM_VCTRL_IN      0x85
 
-#define EPNUM_VCTRL_OUT     0x07
-#define EPNUM_VCTRL_IN      0x87
-
-#define EPNUM_VCAN_OUT      0x08
-#define EPNUM_VCAN_IN       0x88
+#define EPNUM_VCAN_OUT      0x06
+#define EPNUM_VCAN_IN       0x86
 
 #define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN +                \
-                             TUD_CDC_DESC_LEN * 3 +               \
+                             TUD_CDC_DESC_LEN * 2 +               \
                              TUD_VENDOR_DESC_LEN * 2)
 
 uint8_t const desc_fs_configuration[] = {
@@ -103,13 +97,10 @@ uint8_t const desc_fs_configuration[] = {
     TUD_CDC_DESCRIPTOR(ITF_CDC_1, 5 /* iInterface */, EPNUM_CDC_1_NOTIF, 8,
                        EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
 
-    TUD_CDC_DESCRIPTOR(ITF_CDC_2, 6 /* iInterface */, EPNUM_CDC_2_NOTIF, 8,
-                       EPNUM_CDC_2_OUT, EPNUM_CDC_2_IN, 64),
-
-    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CTRL, 7 /* iInterface */,
+    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CTRL, 6 /* iInterface */,
                           EPNUM_VCTRL_OUT, EPNUM_VCTRL_IN, 64),
 
-    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CAN, 8 /* iInterface */,
+    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CAN, 7 /* iInterface */,
                           EPNUM_VCAN_OUT, EPNUM_VCAN_IN, 64),
 };
 
@@ -144,11 +135,10 @@ static char const *const string_desc_arr[] = {
     "BAUER GROUP",                        /* 1: Manufacturer */
     "RPBridge Multi-Bus Developer Bridge",/* 2: Product */
     rpbridge_serial,                      /* 3: Serial number (filled lazily) */
-    "rpbridge UART 1",                    /* 4 */
-    "rpbridge UART 2",                    /* 5 */
-    "rpbridge Debug Log",                 /* 6 */
-    "rpbridge Control",                   /* 7 — vendor RPBP */
-    "rpbridge CAN",                       /* 8 — vendor gs_usb */
+    "rpbridge UART 1",                    /* 4: CDC-ACM #0 — user phy-bank UART */
+    "rpbridge UART 2",                    /* 5: CDC-ACM #1 — PIO-UART #2        */
+    "rpbridge Control",                   /* 6: vendor RPBP                     */
+    "rpbridge CAN",                       /* 7: vendor gs_usb                   */
 };
 
 static uint16_t _desc_str[32];

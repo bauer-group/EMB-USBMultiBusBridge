@@ -62,8 +62,9 @@ authoritative spec section.
 
 ## M7 — Windows binding
 
-- [ ] `src/usb/ms_os_20.c` — BOS + MS OS 2.0 descriptor set for
-      automatic WinUSB binding on Windows 10 ≥ 1709
+- [x] `src/usb/ms_os_20.c` — BOS + MS OS 2.0 descriptor set for
+      automatic WinUSB binding on Windows 10 ≥ 1709 (landed with the
+      USB-stack-base change; DeviceInterfaceGUIDs are per-vendor-IF).
 
 ## M8 — Tests at scale
 
