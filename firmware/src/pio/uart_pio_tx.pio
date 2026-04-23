@@ -1,0 +1,30 @@
+; SPDX-License-Identifier: BSD-3-Clause
+; Copyright (c) 2026 BAUER GROUP
+;
+; Simple 8N1 UART TX in PIO. Ported verbatim from pico-examples
+; (pio/uart_tx/uart_tx.pio). One start bit, eight data bits LSB-first,
+; one stop bit. No parity.
+;
+; The SM clock divider MUST be set so the SM runs at 8x the target
+; baud rate — every instruction that shifts a bit is held for 8
+; cycles via the side-set / delay counts below.
+;
+; Pin mapping:
+;   OUT pin 0       = UART TX
+;   side-set pin 0  = UART TX (lets the start-bit delay also drive
+;                     the line low without needing a data shift)
+;
+; FIFO usage: the SM expects 32-bit words (one byte right-aligned,
+; shift-right in OSR). Set `sm_config_set_out_shift(&c, true, false, 32)`
+; on the C side and push via pio_sm_put_blocking(). Joined TX FIFO
+; (PIO_FIFO_JOIN_TX) makes the FIFO 8-deep instead of 4.
+
+.program rpbridge_uart_pio_tx
+.side_set 1 opt
+
+    pull       side 1 [7]  ; Stall when empty; keep the line HIGH (idle) during
+                           ; the stall, drive HIGH for 8 cycles to emit the stop bit.
+    set x, 7   side 0 [7]  ; Load bit-counter (8), hold the start bit LOW for 8 cycles.
+bitloop:
+    out pins, 1            ; Shift one bit onto OUT pin.
+    jmp x-- bitloop [6]    ; 8-cycle loop (6 + 1 out + 1 jmp).

@@ -102,6 +102,7 @@ nav:
       - Error codes: protocol/status-codes.md
       - Fragmentation: protocol/fragmentation.md
       - SYS subsystem: protocol/subsystems/sys.md
+      - UART subsystem: protocol/subsystems/uart.md
   - Firmware:
       - Overview: firmware/overview.md
       - Building & flashing: firmware/build.md

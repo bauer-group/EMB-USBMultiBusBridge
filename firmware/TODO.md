@@ -56,23 +56,32 @@ authoritative spec section.
 
 ### M4b — PIO UART bridge (CDC #1)
 
-- [ ] PIO UART TX / RX programs (from pico-examples, extended with
-      break-detection and RX-error flags).
-- [ ] Second `uart_hw`-equivalent module for the PIO path — same
-      public API, different backend.
-- [ ] Wire CDC-ACM #1 in `cdc_glue.c` and add a second
-      `buses.uart` entry to the capability map.
+- [x] `src/pio/uart_pio_tx.pio` / `uart_pio_rx.pio` — 8N1 PIO
+      programs ported from pico-examples, with RX framing-error IRQ.
+- [x] `src/periph/uart_pio.{c,h}` — PIO-backed UART with the same
+      public API as `uart_hw` (ring buffers, line-coding, tick).
+- [x] `cdc_glue.c` bridges CDC-ACM #1 to uart_pio instance 0
+      (GP33 TX / GP36 RX on PIO1). Capability map lists the 2nd
+      instance under `buses.uart`.
 
 ### M4c — UART0 phy-bank switch
 
-- [ ] RPBP UART subsystem opcode `SET_PHY { ttl | rs232 | rs485 }`
-      driving GP7 (RS485 EN), GP8 (RS232 /SHDN), MAX3232 + SN65HVD72.
-- [ ] Capability features gain `"uart.rs232"` and `"uart.rs485"`.
+- [x] `src/periph/uart_phy.{c,h}` — GP6/GP7/GP8 state machine with
+      safe off-then-on transitions.
+- [x] RPBP UART subsystem (subsys = 6): opcodes `SET_PHY (0x00)` and
+      `GET_PHY (0x01)`; spec at `docs/protocol/subsystems/uart.md`.
+- [x] Capability features advertise `"uart.ttl"`, `"uart.rs232"`,
+      `"uart.rs485"`; `buses.uart[0]` carries `de_pin` + `phys[]`.
 
-### M4d — RS485 precision DE
+### M4d — RS485 DE timing
 
-- [ ] `src/pio/rs485_de.pio` — DE assert/deassert co-clocked with
-      UART0 TX; configurable guard interval.
+- [x] **Software DE** (current): `uart_hw` asserts GP6 HIGH before
+      any TX burst and releases it once the UART BUSY flag clears,
+      driven by `uart_hw_tick()` from the main loop. Correct at all
+      supported baud rates (≤ 3 Mbaud) with a tick period ≤ 5 ms.
+- [ ] **PIO-precision DE** (future): `src/pio/rs485_de.pio` co-
+      clocked with UART0 TX, configurable guard interval. Needed
+      only if a scope-level audit shows unacceptable DE edges.
 
 ## M5 — CAN over PIO (can2040)
 

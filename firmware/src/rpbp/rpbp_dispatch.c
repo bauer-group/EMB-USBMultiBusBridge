@@ -14,6 +14,7 @@
 #include "pico/time.h"
 
 #include "cmd/cmd_sys.h"
+#include "cmd/cmd_uart.h"
 
 #include <string.h>
 
@@ -273,12 +274,14 @@ static enum rpbp_status handle_cmd_request(const struct rpbp_header *hdr,
     case RPBP_SUBSYS_SYS:
         return cmd_sys_dispatch(hdr, opcode, args, args_len, cbor);
 
+    case RPBP_SUBSYS_UART:
+        return cmd_uart_dispatch(hdr, opcode, args, args_len, cbor);
+
     case RPBP_SUBSYS_I2C:
     case RPBP_SUBSYS_SPI:
     case RPBP_SUBSYS_GPIO:
     case RPBP_SUBSYS_PWM:
     case RPBP_SUBSYS_ADC:
-    case RPBP_SUBSYS_UART:
         rpbp_reply_cmd(hdr, subsys, opcode, RPBP_ENOTSUP, NULL, 0, false);
         return RPBP_OK;
 

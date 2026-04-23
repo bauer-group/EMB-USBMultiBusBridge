@@ -59,6 +59,12 @@ struct uart_hw_state {
     volatile uint16_t tx_head;     /* producer writes, ISR reads */
     volatile uint16_t tx_tail;     /* ISR writes, producer reads */
 
+    /* RS485 DE pin. -1 = disabled, otherwise GPIO number. Driven HIGH
+     * just before any TX byte enters the ring / FIFO, released back to
+     * LOW by uart_hw_tick() once the UART BUSY flag clears. */
+    int8_t            de_pin;
+    volatile bool     de_asserted;
+
     struct uart_hw_stats stats;
 };
 
@@ -145,6 +151,7 @@ int uart_hw_init(uart_hw_instance_t instance, uint8_t tx_pin, uint8_t rx_pin)
 
     s->inst    = inst_ptr(instance);
     s->irq_num = inst_irq(instance);
+    s->de_pin  = -1;               /* no DE pin unless explicitly set */
 
     /* Route the pins first so the UART never drives a floating pad. */
     gpio_set_function(tx_pin, GPIO_FUNC_UART);
@@ -222,7 +229,16 @@ size_t uart_hw_write(uart_hw_instance_t instance, const uint8_t *buf, size_t len
     }
 
     if (pushed > 0) {
-        /* Kick the TX IRQ chain so the ISR starts draining our ring. */
+        /* Before kicking the TX IRQ chain, assert DE if a DE pin is
+         * registered and not already high. We do this on the producer
+         * side (not inside the ISR) so the DE transition happens
+         * strictly before the first byte can hit the TX shift
+         * register, and the driver's lifetime fully brackets the
+         * transmission. */
+        if (s->de_pin >= 0 && !s->de_asserted) {
+            gpio_put((uint)s->de_pin, 1);
+            s->de_asserted = true;
+        }
         uart_set_irq_enables(s->inst, true /*rx*/, true /*tx*/);
     }
     return pushed;
@@ -249,4 +265,43 @@ const struct uart_hw_stats *uart_hw_stats(uart_hw_instance_t instance)
 {
     if (instance >= NUM_UART_HW_INSTANCES) return NULL;
     return &g_uarts[instance].stats;
+}
+
+/* ───── RS485 DE-pin support ─────────────────────────────────────────── */
+
+void uart_hw_set_de_pin(uart_hw_instance_t instance, int8_t gpio)
+{
+    if (instance >= NUM_UART_HW_INSTANCES) return;
+    struct uart_hw_state *s = &g_uarts[instance];
+
+    /* Release the previous pin (if any). The GPIO's direction / pull
+     * configuration stays untouched — the phy module owns the pin
+     * lifecycle and will repurpose it on the next phy change. */
+    if (s->de_pin >= 0 && s->de_asserted) {
+        gpio_put((uint)s->de_pin, 0);
+    }
+    s->de_asserted = false;
+    s->de_pin      = gpio;
+}
+
+void uart_hw_tick(uart_hw_instance_t instance)
+{
+    if (instance >= NUM_UART_HW_INSTANCES) return;
+    struct uart_hw_state *s = &g_uarts[instance];
+    if (!s->initialised)   return;
+    if (s->de_pin < 0)     return;
+    if (!s->de_asserted)   return;
+
+    /* DE stays up until the UART is fully idle:
+     *   - no bytes queued in our ring     (tx_head == tx_tail)
+     *   - the hardware BUSY flag cleared  (the last bit has left the shift register)
+     * Without the BUSY check we would clip the last stop bit on
+     * short bursts. */
+    const bool ring_empty = (s->tx_tail == s->tx_head);
+    const bool hw_idle    = (uart_get_hw(s->inst)->fr & UART_UARTFR_BUSY_BITS) == 0u;
+
+    if (ring_empty && hw_idle) {
+        gpio_put((uint)s->de_pin, 0);
+        s->de_asserted = false;
+    }
 }

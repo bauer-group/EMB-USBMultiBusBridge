@@ -71,7 +71,7 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  7
+#define RPBRIDGE_FEATURE_COUNT  9
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
@@ -80,7 +80,9 @@ static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "time-sync",
     "crc32c.sw",        /* software CRC for v1; hw DMA SNIFFER path pending */
     "firmware-update",
-    "uart.ttl",         /* CDC-ACM #0 <-> UART0 HW (phy-switch pending) */
+    "uart.ttl",         /* both uart instances can drive TTL                */
+    "uart.rs232",       /* UART0 phy-bank: MAX3232                          */
+    "uart.rs485",       /* UART0 phy-bank: SN65HVD72 + software DE          */
 };
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
@@ -126,7 +128,9 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
      * descriptors so hosts can enumerate them uniformly.
      *
      * Present today:
-     *   - "uart": CDC-ACM #0 <-> UART0 HW (phy-bank, currently TTL).
+     *   - "uart": two instances
+     *       #0 — UART0 HW backing CDC-ACM #0, phy-bank selectable.
+     *       #1 — PIO-UART #2 backing CDC-ACM #1, TTL only.
      *
      * Pending: I2C, SPI, GPIO, PWM, ADC, CAN, 1-Wire.
      */
@@ -134,15 +138,36 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     cbor_writer_map(&w, 1);
 
     cbor_writer_text_cstr(&w, "uart");
-    cbor_writer_array(&w, 1);
+    cbor_writer_array(&w, 2);
+
+    /* Instance 0 — UART0 HW with phy-bank. 6 map entries. */
     {
-        /* one instance: CDC-ACM index 0, HW backend, max 3 Mbaud */
-        cbor_writer_map(&w, 5);
+        cbor_writer_map(&w, 6);
         cbor_writer_kv_uint(&w, "idx",      0);
         cbor_writer_kv_uint(&w, "cdc",      0);
         cbor_writer_kv_text(&w, "backend",  "hw");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
-        cbor_writer_kv_text(&w, "phy",      "ttl");
+        /* phys: ["ttl","rs232","rs485"] */
+        cbor_writer_text_cstr(&w, "phys");
+        cbor_writer_array(&w, 3);
+        cbor_writer_text_cstr(&w, "ttl");
+        cbor_writer_text_cstr(&w, "rs232");
+        cbor_writer_text_cstr(&w, "rs485");
+        /* de_pin present because this instance is RS485-capable */
+        cbor_writer_kv_uint(&w, "de_pin", 6);
+    }
+
+    /* Instance 1 — PIO-UART #2. 5 map entries (no de_pin). */
+    {
+        cbor_writer_map(&w, 5);
+        cbor_writer_kv_uint(&w, "idx",      1);
+        cbor_writer_kv_uint(&w, "cdc",      1);
+        cbor_writer_kv_text(&w, "backend",  "pio");
+        cbor_writer_kv_uint(&w, "max_baud", 3000000);
+        /* phys: ["ttl"] */
+        cbor_writer_text_cstr(&w, "phys");
+        cbor_writer_array(&w, 1);
+        cbor_writer_text_cstr(&w, "ttl");
     }
 
     /* ota descriptor */

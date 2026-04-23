@@ -11,10 +11,17 @@
  *     naturally through the USB NAK mechanism if the UART stalls.
  *   - Never reads from the UART RX ring unless the CDC TX FIFO has
  *     matching room. Same reasoning in the other direction.
+ *
+ * Two independent bridges run in parallel:
+ *
+ *     CDC #0 <-> UART0 HW (phy-bank: RS232 / RS485 / TTL on GP0/GP1)
+ *     CDC #1 <-> PIO-UART  (TTL-only, GP33 / GP36, PIO1 block)
  */
 
 #include "cdc_glue.h"
 #include "periph/uart_hw.h"
+#include "periph/uart_pio.h"
+#include "periph/uart_phy.h"
 
 #include "tusb.h"
 #include "hardware/uart.h"
@@ -22,60 +29,61 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/*
- * CDC index -> UART HW instance mapping. CDC #1 is reserved for the
- * PIO-UART and has no HW instance yet; the pump skips it.
- *
- * Keep pin assignments close to the spec (hardware-design.md §6):
- *   GP0 = UART0 TX  (feeds the phy-bank: RS232/RS485/TTL)
- *   GP1 = UART0 RX
- */
+/* CDC index → UART backend mapping. */
 #define CDC_ITF_UART1           0u
-#define CDC_ITF_UART2           1u    /* PIO-UART; pump stub for now */
+#define CDC_ITF_UART2           1u
 
+/* Phy-bank UART0 pins (hardware-design.md §6): GP0 TX, GP1 RX. */
 #define UART0_TX_PIN            0u
 #define UART0_RX_PIN            1u
 
-/* Size of on-stack scratch used to shuttle bytes; 64 B matches the
- * CDC data-endpoint size, so a full USB packet can be drained in one
- * iteration. */
+/* PIO UART pins (hardware-design.md §6): GP33 TX, GP36 RX. */
+#define PIO_UART_TX_PIN         33u
+#define PIO_UART_RX_PIN         36u
+
+/* Default baud at power-on. SetLineCoding from the host overrides. */
+#define UART_DEFAULT_BAUD       115200u
+
+/* On-stack scratch used to shuttle bytes; matches the CDC data-
+ * endpoint size so a full USB packet drains in one iteration. */
 #define SCRATCH_BYTES           64u
 
 /* ───── Initialisation ───────────────────────────────────────────────── */
 
 void cdc_glue_init(void)
 {
-    /* Wire CDC #0 to UART0 HW on the phy-bank pins. */
-    uart_hw_init(0u, UART0_TX_PIN, UART0_RX_PIN);
-    /* CDC #1 -> PIO-UART: nothing to do yet. */
+    /* UART0 HW + phy-bank: the phy module owns GP6/GP7/GP8 and hands
+     * GP6 to uart_hw as the DE pin whenever RS485 is selected. */
+    uart_hw_init (0u, UART0_TX_PIN, UART0_RX_PIN);
+    uart_phy_init();
+
+    /* PIO-UART on PIO1, two state machines, TTL-only. */
+    uart_pio_init(0u, PIO_UART_TX_PIN, PIO_UART_RX_PIN, UART_DEFAULT_BAUD);
 }
 
-/* ───── Pump ─────────────────────────────────────────────────────────── */
+/* ───── Pump — UART0 HW ──────────────────────────────────────────────── */
 
-static void pump_cdc_to_uart(uint8_t cdc_itf, uart_hw_instance_t uart)
+static void pump_cdc_to_hw(uint8_t cdc_itf, uart_hw_instance_t uart)
 {
     while (tud_cdc_n_available(cdc_itf)) {
         size_t room = uart_hw_tx_space(uart);
-        if (room == 0) break;                  /* UART back-pressure */
+        if (room == 0) break;
 
         uint8_t  tmp[SCRATCH_BYTES];
         size_t   take = room < sizeof(tmp) ? room : sizeof(tmp);
         uint32_t got  = tud_cdc_n_read(cdc_itf, tmp, (uint32_t)take);
         if (got == 0) break;
 
-        /* uart_hw_write() is guaranteed to accept `got` bytes because
-         * we already checked `room` and `got <= take <= room`. */
         (void)uart_hw_write(uart, tmp, got);
     }
 }
 
-static void pump_uart_to_cdc(uart_hw_instance_t uart, uint8_t cdc_itf)
+static void pump_hw_to_cdc(uart_hw_instance_t uart, uint8_t cdc_itf)
 {
     bool wrote_any = false;
-
     while (uart_hw_rx_available(uart)) {
         uint32_t cdc_room = tud_cdc_n_write_available(cdc_itf);
-        if (cdc_room == 0) break;               /* host back-pressure */
+        if (cdc_room == 0) break;
 
         uint8_t tmp[SCRATCH_BYTES];
         size_t  take = cdc_room < sizeof(tmp) ? cdc_room : sizeof(tmp);
@@ -85,32 +93,77 @@ static void pump_uart_to_cdc(uart_hw_instance_t uart, uint8_t cdc_itf)
         tud_cdc_n_write(cdc_itf, tmp, (uint32_t)got);
         wrote_any = true;
     }
-
     if (wrote_any) {
         tud_cdc_n_write_flush(cdc_itf);
     }
 }
 
+/* ───── Pump — PIO UART ──────────────────────────────────────────────── */
+
+static void pump_cdc_to_pio(uint8_t cdc_itf, uart_pio_instance_t uart)
+{
+    while (tud_cdc_n_available(cdc_itf)) {
+        size_t room = uart_pio_tx_space(uart);
+        if (room == 0) break;
+
+        uint8_t  tmp[SCRATCH_BYTES];
+        size_t   take = room < sizeof(tmp) ? room : sizeof(tmp);
+        uint32_t got  = tud_cdc_n_read(cdc_itf, tmp, (uint32_t)take);
+        if (got == 0) break;
+
+        (void)uart_pio_write(uart, tmp, got);
+    }
+}
+
+static void pump_pio_to_cdc(uart_pio_instance_t uart, uint8_t cdc_itf)
+{
+    bool wrote_any = false;
+    while (uart_pio_rx_available(uart)) {
+        uint32_t cdc_room = tud_cdc_n_write_available(cdc_itf);
+        if (cdc_room == 0) break;
+
+        uint8_t tmp[SCRATCH_BYTES];
+        size_t  take = cdc_room < sizeof(tmp) ? cdc_room : sizeof(tmp);
+        size_t  got  = uart_pio_read(uart, tmp, take);
+        if (got == 0) break;
+
+        tud_cdc_n_write(cdc_itf, tmp, (uint32_t)got);
+        wrote_any = true;
+    }
+    if (wrote_any) {
+        tud_cdc_n_write_flush(cdc_itf);
+    }
+}
+
+/* ───── Public pump entrypoint ───────────────────────────────────────── */
+
 void cdc_glue_poll(void)
 {
-    if (!tud_cdc_n_ready(CDC_ITF_UART1)) {
-        /* Host hasn't opened the port yet — skip silently. */
-    } else {
-        pump_cdc_to_uart(CDC_ITF_UART1, 0u);
-        pump_uart_to_cdc(0u, CDC_ITF_UART1);
+    /* PIO UART runs on a polled tick: always service the hardware
+     * FIFOs before and after the CDC shuttle so 4-word PIO FIFOs
+     * stay drained at high baud. */
+    uart_pio_tick(0u);
+
+    if (tud_cdc_n_ready(CDC_ITF_UART1)) {
+        pump_cdc_to_hw(CDC_ITF_UART1, 0u);
+        pump_hw_to_cdc(0u, CDC_ITF_UART1);
     }
 
-    /* CDC #1 (PIO-UART) pump lives here once the PIO UART ships. */
+    if (tud_cdc_n_ready(CDC_ITF_UART2)) {
+        pump_cdc_to_pio(CDC_ITF_UART2, 0u);
+        pump_pio_to_cdc(0u, CDC_ITF_UART2);
+    }
+
+    /* RS485 DE deassertion runs on a BUSY-flag poll (no IRQ). Ticking
+     * every loop iteration keeps the off-edge within a few µs of the
+     * real end-of-transmission even at 3 Mbaud. */
+    uart_hw_tick(0u);
+
+    uart_pio_tick(0u);
 }
 
 /* ───── TinyUSB CDC callbacks ───────────────────────────────────────── */
 
-/*
- * Map CDC 1.2 line-coding fields onto the UART HW driver. The CDC
- * parity code set is wider than the UART hardware supports — we
- * silently clamp mark/space down to none, which is the least
- * surprising default for a developer tool.
- */
 void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
 {
     if (p == NULL) return;
@@ -121,7 +174,7 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
     switch (p->parity) {
     case 1:  parity = UART_HW_PARITY_ODD;  break;
     case 2:  parity = UART_HW_PARITY_EVEN; break;
-    default: parity = UART_HW_PARITY_NONE; break;  /* 0/mark/space */
+    default: parity = UART_HW_PARITY_NONE; break;  /* 0 / mark / space */
     }
 
     switch (itf) {
@@ -133,43 +186,40 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
                                 parity);
         break;
     case CDC_ITF_UART2:
-        /* PIO-UART line coding pending M4b. */
+        /* PIO-UART is 8N1-only; the set_line_coding helper silently
+         * clamps data/stop/parity and only touches the baud divider. */
+        uart_pio_set_line_coding(0u,
+                                 p->bit_rate,
+                                 p->data_bits,
+                                 stop,
+                                 parity);
         break;
     default:
         break;
     }
 }
 
-/*
- * DTR/RTS transitions. For the scaffold we acknowledge but don't act
- * on them. The classic Arduino / Pico "DTR=low + RTS=low -> reboot
- * to BOOTSEL" trick lands later — it needs a small state machine to
- * debounce the simultaneous edges the host driver typically produces.
- */
 void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts)
 {
+    /* DTR/RTS are not wired to the hardware transceivers in rev-B.
+     * The Arduino-style "reset via DTR" trick is deferred until a
+     * small state machine lands that debounces simultaneous edges. */
     (void)itf;
     (void)dtr;
     (void)rts;
 }
 
-/*
- * Break signal: the host asks the device to drive the TX line low
- * for either a fixed duration (ms) or, per CDC 1.2, indefinitely
- * (0xFFFF means "start", 0 means "stop"). We pass that directly to
- * the SDK, which sets the UART BREAK bit — host is responsible for
- * clearing it.
- */
 void tud_cdc_send_break_cb(uint8_t itf, uint16_t duration_ms)
 {
     bool asserted = (duration_ms != 0u);
-
     switch (itf) {
     case CDC_ITF_UART1:
         uart_set_break(uart0, asserted);
         break;
     case CDC_ITF_UART2:
-        /* PIO-UART break pending M4b. */
+        /* PIO UART doesn't expose a break primitive; the PIO
+         * program inherently emits idle-HIGH during stalls. Break
+         * support on PIO lands with a future revision. */
         break;
     default:
         break;

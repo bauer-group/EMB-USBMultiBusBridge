@@ -127,6 +127,29 @@ enum rpbp_sys_op {
     RPBP_SYS_RESET            = 0x08,
 };
 
+/* ───── UART opcodes (subsys = 6) ────────────────────────────────────── */
+
+enum rpbp_uart_op {
+    RPBP_UART_SET_PHY         = 0x00,
+    RPBP_UART_GET_PHY         = 0x01,
+};
+
+/*
+ * Phy selection applies only to UART instances that are backed by
+ * the hardware phy-bank (rev-B: uart_idx = 0 → UART0 HW). PIO UART
+ * instances (uart_idx = 1 → PIO-UART #2) are TTL-only and reject
+ * SET_PHY with ENOTSUP.
+ *
+ * Integer values are stable wire ABI — they mirror
+ * enum uart_phy_mode in firmware/src/periph/uart_phy.h.
+ */
+enum rpbp_uart_phy {
+    RPBP_UART_PHY_OFF   = 0,
+    RPBP_UART_PHY_TTL   = 1,
+    RPBP_UART_PHY_RS232 = 2,
+    RPBP_UART_PHY_RS485 = 3,
+};
+
 /* ───── Status codes ─────────────────────────────────────────────────── */
 
 enum rpbp_status {

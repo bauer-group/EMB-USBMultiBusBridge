@@ -83,6 +83,25 @@ size_t uart_hw_rx_available(uart_hw_instance_t instance);
 size_t uart_hw_tx_space    (uart_hw_instance_t instance);
 
 /*
+ * RS485 DE-pin support (optional, disabled by default).
+ *
+ * When a DE pin is registered (`gpio >= 0`), the instance drives it
+ * HIGH automatically just before any TX burst and releases it back
+ * to LOW once the UART has fully shifted the last bit out of the
+ * shift register (detected by polling the hardware BUSY flag).
+ *
+ * Pass `gpio = -1` to detach the DE pin (e.g. on phy switch to
+ * RS232 / TTL). While a DE pin is detached, the firmware does not
+ * touch that GPIO at all.
+ *
+ * uart_hw_tick() MUST be called periodically from the main loop to
+ * drive the DE deassert check — there is no IRQ for "BUSY clears".
+ * Calling it at ≥ 200 Hz is plenty for 115 200..3 Mbaud traffic.
+ */
+void uart_hw_set_de_pin(uart_hw_instance_t instance, int8_t gpio);
+void uart_hw_tick       (uart_hw_instance_t instance);
+
+/*
  * Diagnostics counters. Incremented by the IRQ handler; reading is
  * cheap. Useful for self-test and capability-map stats.
  */

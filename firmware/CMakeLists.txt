@@ -92,11 +92,14 @@ add_executable(rpbridge
     # Capability-map emitter.
     src/cap/capabilities.c
 
-    # SYS subsystem (subsys = 0) handlers.
+    # Subsystem handlers.
     src/cmd/cmd_sys.c
+    src/cmd/cmd_uart.c
 
     # Peripheral drivers.
     src/periph/uart_hw.c
+    src/periph/uart_pio.c
+    src/periph/uart_phy.c
 
     # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding,
     # plus the CDC-ACM <-> UART byte-shuttle glue.
@@ -105,9 +108,21 @@ add_executable(rpbridge
     src/usb/cdc_glue.c
 
     # See firmware/TODO.md for remaining modules: I2C / SPI / GPIO /
-    # PWM / ADC subsystem handlers, pin broker, PIO-UART, RS485-DE
-    # applet, CAN (can2040 + gs_usb), core1 scheduler.
+    # PWM / ADC subsystem handlers, pin broker, CAN (can2040 + gs_usb),
+    # core1 scheduler, PIO-based precision RS485 DE.
 )
+
+# ──────────────────────────────────────────────────────────────────────────
+# PIO programs: pioasm turns each .pio file into a C header with the
+# program struct, default config, offsets, and instruction array. The
+# headers land in the build tree and are found via an added include
+# path below.
+# ──────────────────────────────────────────────────────────────────────────
+
+pico_generate_pio_header(rpbridge
+    ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_pio_tx.pio)
+pico_generate_pio_header(rpbridge
+    ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_pio_rx.pio)
 
 target_include_directories(rpbridge PRIVATE
     src

@@ -27,11 +27,16 @@ M6.
 | `src/rpbp/rpbp_transport.{c,h}`         | TinyUSB vendor-class glue, RX state machine, TX.       |
 | `src/cap/capabilities.{c,h}`            | Capability + identity map emitters.                    |
 | `src/cmd/cmd_sys.{c,h}`                 | SYS subsystem handlers (subsys = 0).                   |
+| `src/cmd/cmd_uart.{c,h}`                | UART subsystem handlers (subsys = 6) — SET_PHY / GET_PHY. |
 | `src/usb/tusb_config.h`                 | TinyUSB build-time configuration.                      |
 | `src/usb/usb_descriptors.c`             | Composite device + BOS + vendor control-transfer.      |
 | `src/usb/ms_os_20.{c,h}`                | BOS platform capability + MS OS 2.0 descriptor set.    |
 | `src/usb/cdc_glue.{c,h}`                | CDC-ACM ↔ UART byte shuttle + TinyUSB class callbacks. |
-| `src/periph/uart_hw.{c,h}`              | IRQ-driven HW UART wrapper with RX/TX ring buffers.    |
+| `src/periph/uart_hw.{c,h}`              | IRQ-driven HW UART wrapper + optional software RS485 DE. |
+| `src/periph/uart_pio.{c,h}`             | PIO-backed 8N1 UART (PIO1, two SMs) with software rings. |
+| `src/periph/uart_phy.{c,h}`             | UART0 phy-bank selector (OFF / TTL / RS232 / RS485).   |
+| `src/pio/uart_pio_tx.pio`               | PIO 8N1 TX program (8 cycles / bit).                   |
+| `src/pio/uart_pio_rx.pio`               | PIO 8N1 RX program with framing-error IRQ.             |
 
 ## System infrastructure
 
