@@ -123,14 +123,13 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     }
 
     /*
-     * buses: one entry per bus family that the firmware currently
-     * advertises. Each family's value is an array of instance
-     * descriptors so hosts can enumerate them uniformly.
-     *
-     * Present today:
-     *   - "uart": two instances
-     *       #0 — UART0 HW backing CDC-ACM #0, phy-bank selectable.
-     *       #1 — PIO-UART #2 backing CDC-ACM #1, TTL only.
+     * buses: one entry per bus family, each a flat array of host-
+     * visible instances. For UART we advertise one entry per CDC-ACM
+     * — three share the UART0 HW backend (one per phy in the phy-
+     * bank) so a host can pick the physical layer by opening the
+     * correctly-named virtual COM port without ever touching RPBP.
+     * The firmware auto-selects the transceiver from whichever CDC
+     * has DTR asserted (see docs/protocol/subsystems/uart.md).
      *
      * Pending: I2C, SPI, GPIO, PWM, ADC, CAN, 1-Wire.
      */
@@ -138,36 +137,47 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     cbor_writer_map(&w, 1);
 
     cbor_writer_text_cstr(&w, "uart");
-    cbor_writer_array(&w, 2);
+    cbor_writer_array(&w, 4);
 
-    /* Instance 0 — UART0 HW with phy-bank. 6 map entries. */
+    /* CDC #0 — UART0 HW via MAX3232 (RS232). */
     {
-        cbor_writer_map(&w, 6);
+        cbor_writer_map(&w, 5);
         cbor_writer_kv_uint(&w, "idx",      0);
         cbor_writer_kv_uint(&w, "cdc",      0);
         cbor_writer_kv_text(&w, "backend",  "hw");
+        cbor_writer_kv_text(&w, "phy",      "rs232");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
-        /* phys: ["ttl","rs232","rs485"] */
-        cbor_writer_text_cstr(&w, "phys");
-        cbor_writer_array(&w, 3);
-        cbor_writer_text_cstr(&w, "ttl");
-        cbor_writer_text_cstr(&w, "rs232");
-        cbor_writer_text_cstr(&w, "rs485");
-        /* de_pin present because this instance is RS485-capable */
-        cbor_writer_kv_uint(&w, "de_pin", 6);
     }
 
-    /* Instance 1 — PIO-UART #2. 5 map entries (no de_pin). */
+    /* CDC #1 — UART0 HW via SN65HVD72 (RS485, auto DE on GP6). */
+    {
+        cbor_writer_map(&w, 6);
+        cbor_writer_kv_uint(&w, "idx",      0);
+        cbor_writer_kv_uint(&w, "cdc",      1);
+        cbor_writer_kv_text(&w, "backend",  "hw");
+        cbor_writer_kv_text(&w, "phy",      "rs485");
+        cbor_writer_kv_uint(&w, "max_baud", 3000000);
+        cbor_writer_kv_uint(&w, "de_pin",   6);
+    }
+
+    /* CDC #2 — UART0 HW direct-drive TTL (header #1). */
+    {
+        cbor_writer_map(&w, 5);
+        cbor_writer_kv_uint(&w, "idx",      0);
+        cbor_writer_kv_uint(&w, "cdc",      2);
+        cbor_writer_kv_text(&w, "backend",  "hw");
+        cbor_writer_kv_text(&w, "phy",      "ttl");
+        cbor_writer_kv_uint(&w, "max_baud", 3000000);
+    }
+
+    /* CDC #3 — PIO-UART on GP33/GP36 (TTL-only, header #2). */
     {
         cbor_writer_map(&w, 5);
         cbor_writer_kv_uint(&w, "idx",      1);
-        cbor_writer_kv_uint(&w, "cdc",      1);
+        cbor_writer_kv_uint(&w, "cdc",      3);
         cbor_writer_kv_text(&w, "backend",  "pio");
+        cbor_writer_kv_text(&w, "phy",      "ttl");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
-        /* phys: ["ttl"] */
-        cbor_writer_text_cstr(&w, "phys");
-        cbor_writer_array(&w, 1);
-        cbor_writer_text_cstr(&w, "ttl");
     }
 
     /* ota descriptor */

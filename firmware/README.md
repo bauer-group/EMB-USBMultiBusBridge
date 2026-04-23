@@ -145,16 +145,28 @@ No pico-sdk, no arm-none-eabi-gcc. See [`tests/host/README.md`](tests/host/READM
 ```text
 VID 0x1209 / PID 0xFFFE (pid.codes testing range)
 
-Interface  Class              Purpose                 Host driver
-─────────  ─────────────────  ──────────────────────  ─────────────────────────
-0,1        CDC-ACM × 1        UART 1 virtual COM      usbser / inbox VCP
-2,3        CDC-ACM × 1        UART 2 virtual COM      usbser / inbox VCP
-4          Vendor (WinUSB)    RPBP control (bulk)     rpbridge.ko / WinUSB
-5          Vendor (WinUSB)    gs_usb CAN (bulk)       gs_usb.ko / candle_api
+Interface  Class              Purpose                        Host driver
+─────────  ─────────────────  ─────────────────────────────  ─────────────────────────
+0,1        CDC-ACM × 1        UART 1 RS232  (via MAX3232)    usbser / inbox VCP
+2,3        CDC-ACM × 1        UART 1 RS485  (via SN65HVD72)  usbser / inbox VCP
+4,5        CDC-ACM × 1        UART 1 TTL    (direct drive)   usbser / inbox VCP
+6,7        CDC-ACM × 1        UART 2 TTL    (PIO-UART #2)    usbser / inbox VCP
+8          Vendor (WinUSB)    RPBP control (bulk)            rpbridge.ko / WinUSB
+9          Vendor (WinUSB)    gs_usb CAN   (bulk)            gs_usb.ko / candle_api
 ```
 
 The debug log is NOT on a CDC; `stdio` (printf) goes to UART1 on the
 5-pin debug header instead — see the "Debugging" section above.
+
+**Driverless phy selection:** a developer picks the UART0 physical
+layer by opening the correspondingly-labelled virtual COM port — the
+firmware auto-switches the transceiver (MAX3232 / SN65HVD72 / direct
+TTL) based on which of CDC 0/1/2 currently asserts DTR. No rpbridge-
+ctl, no libusb, no kernel driver in the hot path. Only one UART0 CDC
+may be active at a time; opening a second takes over and drains the
+previously-active one. See
+[`docs/protocol/subsystems/uart.md`](../docs/protocol/subsystems/uart.md)
+for the full semantics and the RPBP override path.
 
 Windows 10 ≥ 1709 binds WinUSB automatically via the BOS + MS OS 2.0
 descriptor set (see [`src/usb/ms_os_20.c`](src/usb/ms_os_20.c)).
@@ -162,8 +174,8 @@ The two vendor interfaces register distinct `DeviceInterfaceGUIDs`:
 
 | Interface          | DeviceInterfaceGUID                        |
 |--------------------|---------------------------------------------|
-| 4 — RPBP Control   | `{24D7D4F5-FB9F-4B5D-8A1F-69F3C9FE8B23}`    |
-| 5 — gs_usb CAN     | `{8F3B2E41-5A6C-4D7E-9F1A-2B3C4D5E6F70}`    |
+| 8 — RPBP Control   | `{24D7D4F5-FB9F-4B5D-8A1F-69F3C9FE8B23}`    |
+| 9 — gs_usb CAN     | `{8F3B2E41-5A6C-4D7E-9F1A-2B3C4D5E6F70}`    |
 
 ## Source tree
 

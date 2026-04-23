@@ -61,12 +61,16 @@ uint8_t const *tud_descriptor_device_cb(void)
 /* ───── Configuration descriptor ─────────────────────────────────────── */
 
 enum {
-    ITF_CDC_0     = 0,     /* user UART 1 (phy-bank: RS232/RS485/TTL) */
+    ITF_CDC_0     = 0,     /* UART 1 RS232 (MAX3232 via UART0 HW)        */
     ITF_CDC_0_DATA,
-    ITF_CDC_1,             /* user UART 2 (PIO-UART #2)                */
+    ITF_CDC_1,             /* UART 1 RS485 (SN65HVD72 via UART0 HW)      */
     ITF_CDC_1_DATA,
-    ITF_VENDOR_CTRL,       /* RPBP control pipe                        */
-    ITF_VENDOR_CAN,        /* gs_usb CAN pipe                          */
+    ITF_CDC_2,             /* UART 1 TTL   (direct 3.3 V via UART0 HW)   */
+    ITF_CDC_2_DATA,
+    ITF_CDC_3,             /* UART 2 TTL   (PIO-UART #2)                 */
+    ITF_CDC_3_DATA,
+    ITF_VENDOR_CTRL,       /* RPBP control pipe                          */
+    ITF_VENDOR_CAN,        /* gs_usb CAN pipe                            */
     ITF_TOTAL
 };
 
@@ -78,29 +82,49 @@ enum {
 #define EPNUM_CDC_1_OUT     0x04
 #define EPNUM_CDC_1_IN      0x84
 
-#define EPNUM_VCTRL_OUT     0x05
-#define EPNUM_VCTRL_IN      0x85
+#define EPNUM_CDC_2_NOTIF   0x85
+#define EPNUM_CDC_2_OUT     0x06
+#define EPNUM_CDC_2_IN      0x86
 
-#define EPNUM_VCAN_OUT      0x06
-#define EPNUM_VCAN_IN       0x86
+#define EPNUM_CDC_3_NOTIF   0x87
+#define EPNUM_CDC_3_OUT     0x08
+#define EPNUM_CDC_3_IN      0x88
+
+#define EPNUM_VCTRL_OUT     0x09
+#define EPNUM_VCTRL_IN      0x89
+
+#define EPNUM_VCAN_OUT      0x0A
+#define EPNUM_VCAN_IN       0x8A
 
 #define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN +                \
-                             TUD_CDC_DESC_LEN * 2 +               \
+                             TUD_CDC_DESC_LEN * 4 +               \
                              TUD_VENDOR_DESC_LEN * 2)
 
 uint8_t const desc_fs_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_TOTAL, 0, CONFIG_TOTAL_LEN, 0x80 /* bus-powered */, 250 /* 500 mA */),
 
+    /* CDC #0 — UART 1 RS232 */
     TUD_CDC_DESCRIPTOR(ITF_CDC_0, 4 /* iInterface */, EPNUM_CDC_0_NOTIF, 8,
                        EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
 
+    /* CDC #1 — UART 1 RS485 */
     TUD_CDC_DESCRIPTOR(ITF_CDC_1, 5 /* iInterface */, EPNUM_CDC_1_NOTIF, 8,
                        EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
 
-    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CTRL, 6 /* iInterface */,
+    /* CDC #2 — UART 1 TTL */
+    TUD_CDC_DESCRIPTOR(ITF_CDC_2, 6 /* iInterface */, EPNUM_CDC_2_NOTIF, 8,
+                       EPNUM_CDC_2_OUT, EPNUM_CDC_2_IN, 64),
+
+    /* CDC #3 — UART 2 TTL (PIO-UART) */
+    TUD_CDC_DESCRIPTOR(ITF_CDC_3, 7 /* iInterface */, EPNUM_CDC_3_NOTIF, 8,
+                       EPNUM_CDC_3_OUT, EPNUM_CDC_3_IN, 64),
+
+    /* Vendor #0 — RPBP control */
+    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CTRL, 8 /* iInterface */,
                           EPNUM_VCTRL_OUT, EPNUM_VCTRL_IN, 64),
 
-    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CAN, 7 /* iInterface */,
+    /* Vendor #1 — gs_usb CAN */
+    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CAN, 9 /* iInterface */,
                           EPNUM_VCAN_OUT, EPNUM_VCAN_IN, 64),
 };
 
@@ -135,10 +159,12 @@ static char const *const string_desc_arr[] = {
     "BAUER GROUP",                        /* 1: Manufacturer */
     "RPBridge Multi-Bus Developer Bridge",/* 2: Product */
     rpbridge_serial,                      /* 3: Serial number (filled lazily) */
-    "rpbridge UART 1",                    /* 4: CDC-ACM #0 — user phy-bank UART */
-    "rpbridge UART 2",                    /* 5: CDC-ACM #1 — PIO-UART #2        */
-    "rpbridge Control",                   /* 6: vendor RPBP                     */
-    "rpbridge CAN",                       /* 7: vendor gs_usb                   */
+    "rpbridge UART 1 (RS232)",            /* 4: CDC #0 — UART0 HW via MAX3232   */
+    "rpbridge UART 1 (RS485)",            /* 5: CDC #1 — UART0 HW via SN65HVD72 */
+    "rpbridge UART 1 (TTL)",              /* 6: CDC #2 — UART0 HW direct drive  */
+    "rpbridge UART 2 (TTL)",              /* 7: CDC #3 — PIO-UART #2            */
+    "rpbridge Control",                   /* 8: vendor RPBP                     */
+    "rpbridge CAN",                       /* 9: vendor gs_usb                   */
 };
 
 static uint16_t _desc_str[32];

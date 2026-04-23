@@ -4,18 +4,44 @@
  *
  * CDC-ACM <-> UART byte shuttle + TinyUSB class callbacks.
  *
- * Invariants the pump preserves:
- *   - Never reads from the CDC RX FIFO unless there is matching room
- *     in the UART TX ring. This keeps the USB transfer in flight
- *     until the UART can accept the data, so TinyUSB back-pressures
- *     naturally through the USB NAK mechanism if the UART stalls.
- *   - Never reads from the UART RX ring unless the CDC TX FIFO has
- *     matching room. Same reasoning in the other direction.
+ * ─── Dedicated-CDC-per-phy layout ────────────────────────────────────
  *
- * Two independent bridges run in parallel:
+ *   CDC #0  "rpbridge UART 1 (RS232)"   ─┐
+ *   CDC #1  "rpbridge UART 1 (RS485)"   ─┼─> UART0 HW (only one active)
+ *   CDC #2  "rpbridge UART 1 (TTL)"     ─┘
  *
- *     CDC #0 <-> UART0 HW (phy-bank: RS232 / RS485 / TTL on GP0/GP1)
- *     CDC #1 <-> PIO-UART  (TTL-only, GP33 / GP36, PIO1 block)
+ *   CDC #3  "rpbridge UART 2 (TTL)"      ─> PIO-UART #2
+ *
+ * With four host-visible virtual COM ports (plus stable udev symlinks
+ * on Linux), a developer picks the physical layer by **opening the
+ * correct port in any standard terminal** — no custom driver, no
+ * control tool. The firmware watches DTR on the three UART0 CDCs and
+ * switches the phy-bank transceiver (MAX3232 / SN65HVD72 / direct
+ * TTL) to match whichever CDC the host has asserted DTR on.
+ *
+ * ─── Mutual exclusion ────────────────────────────────────────────────
+ *
+ * Only one UART0 CDC may own UART0 HW at a time. The most recently
+ * DTR-asserted CDC wins; earlier-active CDCs go dormant and have any
+ * pending host writes silently discarded so the CDC RX FIFO does not
+ * back up and stall the USB pipe. When no CDC has DTR, the phy
+ * relaxes to OFF so the transceivers release their outputs.
+ *
+ * ─── Back-pressure invariants (unchanged from M4a) ───────────────────
+ *
+ * A pump never reads from a source FIFO unless there is matching
+ * room in the destination FIFO / ring. USB-side back-pressure
+ * travels through TinyUSB's NAK mechanism; UART-side back-pressure
+ * travels through the uart_hw / uart_pio ring-capacity checks.
+ *
+ * ─── Optional explicit override ──────────────────────────────────────
+ *
+ * RPBP SET_PHY (`docs/protocol/subsystems/uart.md`) remains as an
+ * explicit control path. When invoked, it takes effect immediately
+ * and persists until the next DTR transition — at which point the
+ * "CDC matches its phy" invariant is restored. This is the
+ * driver-dependent fallback path for scripts and for terminals
+ * that do not assert DTR.
  */
 
 #include "cdc_glue.h"
@@ -29,9 +55,16 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* CDC index → UART backend mapping. */
-#define CDC_ITF_UART1           0u
-#define CDC_ITF_UART2           1u
+/* ───── CDC index layout ─────────────────────────────────────────────── */
+
+#define CDC_ITF_UART1_RS232    0u
+#define CDC_ITF_UART1_RS485    1u
+#define CDC_ITF_UART1_TTL      2u
+#define CDC_ITF_UART2_TTL      3u
+
+/* Which of CDC 0..2 currently owns UART0 HW. -1 = none (phy = OFF). */
+#define NO_ACTIVE_UART0_CDC    (-1)
+static int g_active_uart0_cdc = NO_ACTIVE_UART0_CDC;
 
 /* Phy-bank UART0 pins (hardware-design.md §6): GP0 TX, GP1 RX. */
 #define UART0_TX_PIN            0u
@@ -44,21 +77,45 @@
 /* Default baud at power-on. SetLineCoding from the host overrides. */
 #define UART_DEFAULT_BAUD       115200u
 
-/* On-stack scratch used to shuttle bytes; matches the CDC data-
- * endpoint size so a full USB packet drains in one iteration. */
+/* On-stack scratch used to shuttle bytes; matches the CDC data-endpoint
+ * size so a full USB packet drains in one iteration. */
 #define SCRATCH_BYTES           64u
 
 /* ───── Initialisation ───────────────────────────────────────────────── */
 
 void cdc_glue_init(void)
 {
-    /* UART0 HW + phy-bank: the phy module owns GP6/GP7/GP8 and hands
-     * GP6 to uart_hw as the DE pin whenever RS485 is selected. */
+    /* UART0 HW + phy-bank. uart_phy_init() starts in OFF state: all
+     * transceivers tri-stated. A phy is selected as soon as the host
+     * opens one of the phy-bank CDCs and asserts DTR. */
     uart_hw_init (0u, UART0_TX_PIN, UART0_RX_PIN);
     uart_phy_init();
 
-    /* PIO-UART on PIO1, two state machines, TTL-only. */
+    /* PIO-UART on PIO1 — TTL-only, always on. */
     uart_pio_init(0u, PIO_UART_TX_PIN, PIO_UART_RX_PIN, UART_DEFAULT_BAUD);
+}
+
+/* ───── Helpers ──────────────────────────────────────────────────────── */
+
+static enum uart_phy_mode cdc_to_phy(uint8_t itf)
+{
+    switch (itf) {
+    case CDC_ITF_UART1_RS232: return UART_PHY_RS232;
+    case CDC_ITF_UART1_RS485: return UART_PHY_RS485;
+    case CDC_ITF_UART1_TTL:   return UART_PHY_TTL;
+    default:                  return UART_PHY_OFF;
+    }
+}
+
+/* Drain and discard any pending bytes on an inactive CDC so its RX
+ * FIFO does not fill up and NAK the host to a standstill. */
+static void drain_inactive_cdc(uint8_t itf)
+{
+    uint8_t  tmp[SCRATCH_BYTES];
+    while (tud_cdc_n_available(itf)) {
+        uint32_t n = tud_cdc_n_read(itf, tmp, sizeof(tmp));
+        if (n == 0) break;
+    }
 }
 
 /* ───── Pump — UART0 HW ──────────────────────────────────────────────── */
@@ -139,31 +196,42 @@ static void pump_pio_to_cdc(uart_pio_instance_t uart, uint8_t cdc_itf)
 
 void cdc_glue_poll(void)
 {
-    /* PIO UART runs on a polled tick: always service the hardware
-     * FIFOs before and after the CDC shuttle so 4-word PIO FIFOs
-     * stay drained at high baud. */
+    /* Drain the 4-word PIO FIFOs first so the RX side cannot back up
+     * while we service CDC traffic. */
     uart_pio_tick(0u);
 
-    if (tud_cdc_n_ready(CDC_ITF_UART1)) {
-        pump_cdc_to_hw(CDC_ITF_UART1, 0u);
-        pump_hw_to_cdc(0u, CDC_ITF_UART1);
+    /* UART0 HW — only the active CDC bidirects; the other two UART0
+     * CDCs just get their RX FIFOs drained into the bit bucket. */
+    for (uint8_t itf = CDC_ITF_UART1_RS232; itf <= CDC_ITF_UART1_TTL; ++itf) {
+        if (!tud_cdc_n_ready(itf)) continue;
+
+        if ((int)itf == g_active_uart0_cdc) {
+            pump_cdc_to_hw(itf, 0u);
+            pump_hw_to_cdc(0u, itf);
+        } else {
+            drain_inactive_cdc(itf);
+        }
     }
 
-    if (tud_cdc_n_ready(CDC_ITF_UART2)) {
-        pump_cdc_to_pio(CDC_ITF_UART2, 0u);
-        pump_pio_to_cdc(0u, CDC_ITF_UART2);
+    /* UART 2 (PIO) — independent from UART0, always bidirectional. */
+    if (tud_cdc_n_ready(CDC_ITF_UART2_TTL)) {
+        pump_cdc_to_pio(CDC_ITF_UART2_TTL, 0u);
+        pump_pio_to_cdc(0u, CDC_ITF_UART2_TTL);
     }
 
-    /* RS485 DE deassertion runs on a BUSY-flag poll (no IRQ). Ticking
-     * every loop iteration keeps the off-edge within a few µs of the
-     * real end-of-transmission even at 3 Mbaud. */
+    /* RS485 DE deassertion + PIO FIFO trailing drain. */
     uart_hw_tick(0u);
-
     uart_pio_tick(0u);
 }
 
 /* ───── TinyUSB CDC callbacks ───────────────────────────────────────── */
 
+/*
+ * Line coding maps directly to the UART backend. All three UART0
+ * CDCs share UART0 HW, so any of them reconfigures the same
+ * hardware — this is intentional, because `stty` on a freshly-opened
+ * COM resets the baud and we want the live UART to follow.
+ */
 void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
 {
     if (p == NULL) return;
@@ -178,48 +246,84 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
     }
 
     switch (itf) {
-    case CDC_ITF_UART1:
-        uart_hw_set_line_coding(0u,
-                                p->bit_rate,
-                                p->data_bits,
-                                stop,
-                                parity);
+    case CDC_ITF_UART1_RS232:
+    case CDC_ITF_UART1_RS485:
+    case CDC_ITF_UART1_TTL:
+        uart_hw_set_line_coding(0u, p->bit_rate, p->data_bits, stop, parity);
         break;
-    case CDC_ITF_UART2:
+    case CDC_ITF_UART2_TTL:
         /* PIO-UART is 8N1-only; the set_line_coding helper silently
          * clamps data/stop/parity and only touches the baud divider. */
-        uart_pio_set_line_coding(0u,
-                                 p->bit_rate,
-                                 p->data_bits,
-                                 stop,
-                                 parity);
+        uart_pio_set_line_coding(0u, p->bit_rate, p->data_bits, stop, parity);
         break;
     default:
         break;
     }
 }
 
+/*
+ * Driverless phy auto-selection.
+ *
+ *   DTR=1 on any UART0 CDC → switch the phy-bank to that CDC's phy,
+ *   mark the CDC as the active gateway. Earlier-active CDCs go
+ *   dormant (their bytes will be discarded by the pump until the
+ *   host toggles their DTR again).
+ *
+ *   DTR=0 on the active UART0 CDC → no CDC owns UART0, drop the
+ *   phy to OFF (transceivers release).
+ *
+ *   DTR=0 on a non-active CDC → ignored (it was already dormant).
+ *
+ * CDC #3 (PIO-UART TTL) is not in the mutual-exclusion group; its
+ * DTR is informational.
+ */
 void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts)
 {
-    /* DTR/RTS are not wired to the hardware transceivers in rev-B.
-     * The Arduino-style "reset via DTR" trick is deferred until a
-     * small state machine lands that debounces simultaneous edges. */
-    (void)itf;
-    (void)dtr;
     (void)rts;
+
+    switch (itf) {
+    case CDC_ITF_UART1_RS232:
+    case CDC_ITF_UART1_RS485:
+    case CDC_ITF_UART1_TTL:
+        if (dtr) {
+            uart_phy_set(cdc_to_phy(itf));
+            g_active_uart0_cdc = (int)itf;
+        } else if (g_active_uart0_cdc == (int)itf) {
+            g_active_uart0_cdc = NO_ACTIVE_UART0_CDC;
+            uart_phy_set(UART_PHY_OFF);
+        }
+        break;
+
+    case CDC_ITF_UART2_TTL:
+        /* PIO-UART has no transceiver to coordinate. Nothing to do. */
+        break;
+
+    default:
+        break;
+    }
 }
 
+/*
+ * Break signal. For the UART0 CDCs we forward to the hardware only
+ * if the CDC is the currently-active gateway — otherwise a break on
+ * a dormant CDC could disturb the real TX line. The PIO-UART break
+ * path is a no-op (the PIO program stalls HIGH on idle, so there is
+ * no primitive to drive it LOW for a duration).
+ */
 void tud_cdc_send_break_cb(uint8_t itf, uint16_t duration_ms)
 {
     bool asserted = (duration_ms != 0u);
+
     switch (itf) {
-    case CDC_ITF_UART1:
-        uart_set_break(uart0, asserted);
+    case CDC_ITF_UART1_RS232:
+    case CDC_ITF_UART1_RS485:
+    case CDC_ITF_UART1_TTL:
+        if (g_active_uart0_cdc == (int)itf) {
+            uart_set_break(uart0, asserted);
+        }
         break;
-    case CDC_ITF_UART2:
-        /* PIO UART doesn't expose a break primitive; the PIO
-         * program inherently emits idle-HIGH during stalls. Break
-         * support on PIO lands with a future revision. */
+    case CDC_ITF_UART2_TTL:
+        /* PIO UART: break not implemented in this revision. */
         break;
     default:
         break;

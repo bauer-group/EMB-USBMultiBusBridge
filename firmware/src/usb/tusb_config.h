@@ -32,14 +32,22 @@ extern "C" {
 #define CFG_TUD_ENDPOINT0_SIZE    64
 
 /*
- * Two CDC-ACMs = two user virtual COM ports:
- *   index 0 -> UART 1 (UART0 HW phy-bank: RS232 / RS485 / TTL)
- *   index 1 -> UART 2 (PIO-UART #2 on GP33/GP36)
+ * Four CDC-ACMs — one per user-facing phy, so a stock terminal (no
+ * driver, no rpbridge-ctl) can reach every physical layer by simply
+ * opening the correctly-named virtual COM port:
+ *   index 0 -> UART 1 RS232  (MAX3232 on UART0 phy-bank)
+ *   index 1 -> UART 1 RS485  (SN65HVD72 on UART0 phy-bank, auto DE)
+ *   index 2 -> UART 1 TTL    (direct 3.3 V drive on UART0 phy-bank)
+ *   index 3 -> UART 2 TTL    (PIO-UART #2 on GP33/GP36)
+ *
+ * The firmware watches CDC DTR state and auto-selects the phy-bank
+ * transceiver for whichever UART0 CDC is currently active. Only one
+ * UART0 CDC may own UART0 HW at a time; others silently drain.
  *
  * We deliberately do NOT expose a USB debug-log CDC — stdio is routed
  * to UART1 on the 5-pin debug header instead (see CMakeLists.txt).
  */
-#define CFG_TUD_CDC               2
+#define CFG_TUD_CDC               4
 #define CFG_TUD_VENDOR            2   /* RPBP transport + gs_usb */
 #define CFG_TUD_HID               0
 #define CFG_TUD_MSC               0

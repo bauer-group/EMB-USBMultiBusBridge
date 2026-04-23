@@ -70,8 +70,8 @@
 
 /* ───── Vendor-interface numbers — must match usb_descriptors.c ─────── */
 
-#define IF_NUM_RPBP_CTRL             4u
-#define IF_NUM_GS_USB_CAN            5u
+#define IF_NUM_RPBP_CTRL             8u
+#define IF_NUM_GS_USB_CAN            9u
 
 /* ───── MS OS 2.0 descriptor set blob ────────────────────────────────── */
 

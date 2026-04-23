@@ -71,7 +71,25 @@ authoritative spec section.
 - [x] RPBP UART subsystem (subsys = 6): opcodes `SET_PHY (0x00)` and
       `GET_PHY (0x01)`; spec at `docs/protocol/subsystems/uart.md`.
 - [x] Capability features advertise `"uart.ttl"`, `"uart.rs232"`,
-      `"uart.rs485"`; `buses.uart[0]` carries `de_pin` + `phys[]`.
+      `"uart.rs485"`; each CDC is its own `buses.uart` entry with
+      `phy` and an optional `de_pin` field.
+
+### M4e — Driverless phy selection via dedicated CDC-ACMs
+
+- [x] Composite expanded to 4 CDC-ACMs: one per UART0 phy
+      (RS232 / RS485 / TTL) plus the PIO-UART. Host-facing strings
+      carry the phy name so the COM ports are self-documenting.
+- [x] `cdc_glue.c` watches CDC DTR transitions and auto-switches the
+      UART0 phy-bank transceiver on DTR=1. Last DTR-asserted CDC wins
+      mutual exclusion on UART0 HW; inactive UART0 CDCs have their
+      host writes silently drained so the USB pipe does not stall.
+- [x] RPBP `SET_PHY` is retained as the explicit-override path for
+      terminals that do not toggle DTR and for CI scripts.
+- [x] udev rules publish stable per-phy symlinks: `/dev/rpbridge-
+      uart1-rs232`, `rpbridge-uart1-rs485`, `rpbridge-uart1-ttl`,
+      `rpbridge-uart2`.
+- [x] MS OS 2.0 descriptor set updated — vendor interface numbers
+      shifted to 8 (RPBP) and 9 (gs_usb).
 
 ### M4d — RS485 DE timing
 

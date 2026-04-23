@@ -20,10 +20,18 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", \
     MODE="0660", GROUP="plugdev", TAG+="uaccess", \
     SYMLINK+="rpbridge-bootsel"
 
-# The two CDC-ACM virtual serial ports (UART 1, UART 2) become
-# /dev/ttyACM*, which udev already handles. We add per-interface
-# descriptive symlinks so scripts can address them by role rather than
-# guessing enumeration order.
+# Four CDC-ACM virtual serial ports — one per physical layer so a
+# stock terminal can reach any phy by opening the matching symlink.
+#
+#   /dev/rpbridge-uart1-rs232   CDC #0  →  UART0 HW via MAX3232
+#   /dev/rpbridge-uart1-rs485   CDC #1  →  UART0 HW via SN65HVD72 (auto DE)
+#   /dev/rpbridge-uart1-ttl     CDC #2  →  UART0 HW direct drive (header #1)
+#   /dev/rpbridge-uart2         CDC #3  →  PIO-UART #2 (header #2, TTL)
+#
+# The firmware watches CDC DTR and switches the UART0 phy-bank
+# transceiver to match whichever of CDC 0/1/2 currently has DTR=1.
+# Opening the right COM is all the user has to do — no driver, no
+# rpbridge-ctl, no custom library.
 #
 # Note: the firmware does NOT expose a USB debug-log CDC. stdio
 # (printf) is wired to UART1 on the 5-pin debug header instead —
@@ -32,10 +40,22 @@ SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
     ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
     ATTRS{bInterfaceNumber}=="00", \
     MODE="0660", GROUP="dialout", \
-    SYMLINK+="rpbridge-uart1"
+    SYMLINK+="rpbridge-uart1-rs232"
 
 SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
     ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
     ATTRS{bInterfaceNumber}=="02", \
+    MODE="0660", GROUP="dialout", \
+    SYMLINK+="rpbridge-uart1-rs485"
+
+SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
+    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{bInterfaceNumber}=="04", \
+    MODE="0660", GROUP="dialout", \
+    SYMLINK+="rpbridge-uart1-ttl"
+
+SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
+    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{bInterfaceNumber}=="06", \
     MODE="0660", GROUP="dialout", \
     SYMLINK+="rpbridge-uart2"
