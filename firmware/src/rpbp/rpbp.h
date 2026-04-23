@@ -127,6 +127,24 @@ enum rpbp_sys_op {
     RPBP_SYS_RESET            = 0x08,
 };
 
+/* ───── I²C opcodes (subsys = 1) ─────────────────────────────────────── */
+
+enum rpbp_i2c_op {
+    RPBP_I2C_PROBE    = 0x00,
+    RPBP_I2C_XFER     = 0x01,
+    RPBP_I2C_SCAN     = 0x02,
+    RPBP_I2C_SET_FREQ = 0x03,
+    RPBP_I2C_GET_FREQ = 0x04,
+};
+
+/*
+ * I²C XFER flag bits. Bit 0 `NO_STOP` is the only runtime-selectable
+ * behaviour knob in v1; bits 1..7 are reserved and MUST be zero.
+ * The write-then-repeated-START-then-read pattern is chosen
+ * automatically when both `tx_len` and `rx_len` are non-zero.
+ */
+#define RPBP_I2C_FLAG_NO_STOP     (1u << 0)
+
 /* ───── UART opcodes (subsys = 6) ────────────────────────────────────── */
 
 enum rpbp_uart_op {

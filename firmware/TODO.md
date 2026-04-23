@@ -24,13 +24,24 @@ authoritative spec section.
 
 ## M2 — HW-I²C + pin broker
 
-- [ ] `src/periph/pin_broker.{c,h}` — single source of truth for GPIO
-      ownership; conflicts return `EBUSY`
-- [ ] `src/periph/i2c.{c,h}` — `hardware_i2c` wrapper with DMA for
-      burst transfers
-- [ ] `src/cmd/cmd_i2c.c` — I2C subsystem handlers
-- [ ] Update `src/cap/capabilities.c` to advertise the two I²C bus
-      entries (`"buses"` → `{"i2c": [...]}`)
+- [x] `src/periph/pin_broker.{c,h}` — 48-slot ownership ledger.
+      Conflicts return `-RPBP_EBUSY`; idempotent re-claims by the
+      same owner update the function tag. Existing modules
+      (`uart_hw`, `uart_pio`, `uart_phy`, LED init) claim through
+      the broker; future subsystems must do the same.
+- [x] `src/periph/i2c_hw.{c,h}` — `hardware_i2c` wrapper with
+      timeout-bounded blocking transfers. Supports 100 k / 400 k /
+      1 M baud, write / read / write-restart-read patterns, and
+      the pin broker. DMA path deferred to M6 (no real consumer
+      needs it before streaming lands).
+- [x] `src/cmd/cmd_i2c.{c,h}` — RPBP opcodes `PROBE (0x00)`,
+      `XFER (0x01)`, `SCAN (0x02)`, `SET_FREQ (0x03)`,
+      `GET_FREQ (0x04)`; spec at
+      [`docs/protocol/subsystems/i2c.md`](../docs/protocol/subsystems/i2c.md).
+- [x] Capability map advertises two I²C instances under
+      `buses.i2c` plus `"i2c.100k" / .400k / .1m"` feature flags.
+- [x] `main.c` brings up `pin_broker_init()` first, then calls
+      `i2c_hw_init_all()` after the USB stack is up.
 
 ## M3 — SPI + GPIO + PWM + ADC
 

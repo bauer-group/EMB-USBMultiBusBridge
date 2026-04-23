@@ -162,12 +162,38 @@ M5 completion. No capacity concern.
 
 ## 5. GPIO ownership
 
-The pin broker (M2, pending) owns GPIO assignment at runtime. Until
-it lands, the static assignment in
+The pin broker
+([`firmware/src/periph/pin_broker.{c,h}`](../../firmware/src/periph/pin_broker.c))
+owns the runtime ledger. Every module that takes a pin MUST call
+`pin_broker_claim()` during init; overlapping claims return
+`-RPBP_EBUSY` and fail the init. The board header
 [`firmware/boards/rpbridge_rp2354b.h`](../../firmware/boards/rpbridge_rp2354b.h)
-plus [hardware design §6](../drafts/rpbridge-hardware-design.md) is
-authoritative. Do not add a second copy of the pin table here —
-point at the board header.
+remains the static reference and the authoritative pinout (it
+matches [hardware-design §6](../drafts/rpbridge-hardware-design.md)).
+
+Live claims as of M2:
+
+| Pin(s)     | Owner       | Function                                         |
+|------------|-------------|--------------------------------------------------|
+| GP0, GP1   | `uart-hw`   | UART0 TX / RX (phy-bank backend)                 |
+| GP2, GP3   | `i2c`       | I²C #0 SDA / SCL (Qwiic 1+2)                     |
+| GP4, GP5   | —           | UART1 TX / RX (owned by pico-sdk stdio_uart)     |
+| GP6        | `uart-phy`  | RS485 DE (handed to uart_hw while in RS485 mode) |
+| GP7        | `uart-phy`  | RS485 EN                                         |
+| GP8        | `uart-phy`  | RS232 /SHDN                                      |
+| GP20, GP21 | reserved    | CAN TX / RX (claimed at M5)                      |
+| GP22..24   | `system`    | RGB status LED (R / G / B)                       |
+| GP33, GP36 | `uart-pio`  | PIO-UART TX / RX                                 |
+| GP34, GP35 | `i2c`       | I²C #1 SDA / SCL (Qwiic 3)                       |
+
+Pending subsystems (M3 / M4d-PIO / M5) will add SPI, GPIO-user,
+PWM, ADC, CAN and 1-Wire claims. Update this table in the same
+PR that wires each one in.
+
+The broker is introspectable at runtime via
+`pin_broker_snapshot()`; future `SYS SELFTEST` payloads and
+`rpbridge-ctl pin list` consume that snapshot so developers can
+diagnose conflicts without flashing a debug image.
 
 ---
 

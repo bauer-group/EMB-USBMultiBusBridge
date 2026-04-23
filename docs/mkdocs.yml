@@ -103,6 +103,7 @@ nav:
       - Fragmentation: protocol/fragmentation.md
       - SYS subsystem: protocol/subsystems/sys.md
       - UART subsystem: protocol/subsystems/uart.md
+      - I²C subsystem: protocol/subsystems/i2c.md
   - Firmware:
       - Overview: firmware/overview.md
       - Building & flashing: firmware/build.md

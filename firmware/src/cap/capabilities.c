@@ -71,7 +71,7 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  9
+#define RPBRIDGE_FEATURE_COUNT  12
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
@@ -83,6 +83,9 @@ static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "uart.ttl",         /* both uart instances can drive TTL                */
     "uart.rs232",       /* UART0 phy-bank: MAX3232                          */
     "uart.rs485",       /* UART0 phy-bank: SN65HVD72 + software DE          */
+    "i2c.100k",         /* I²C Standard-mode                                */
+    "i2c.400k",         /* I²C Fast-mode                                    */
+    "i2c.1m",           /* I²C Fast-mode Plus                               */
 };
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
@@ -131,10 +134,10 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
      * The firmware auto-selects the transceiver from whichever CDC
      * has DTR asserted (see docs/protocol/subsystems/uart.md).
      *
-     * Pending: I2C, SPI, GPIO, PWM, ADC, CAN, 1-Wire.
+     * Pending: SPI, GPIO, PWM, ADC, CAN, 1-Wire.
      */
     cbor_writer_text_cstr(&w, "buses");
-    cbor_writer_map(&w, 1);
+    cbor_writer_map(&w, 2);
 
     cbor_writer_text_cstr(&w, "uart");
     cbor_writer_array(&w, 4);
@@ -178,6 +181,43 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
         cbor_writer_kv_text(&w, "backend",  "pio");
         cbor_writer_kv_text(&w, "phy",      "ttl");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
+    }
+
+    /*
+     * I²C — two HW-backed buses on Qwiic headers + a 4-pin
+     * break-out. Each entry carries the canonical freq ladder
+     * rather than a single max_freq so hosts can pick a clock the
+     * slaves on that bus can actually sustain.
+     */
+    cbor_writer_text_cstr(&w, "i2c");
+    cbor_writer_array(&w, 2);
+
+    /* I²C #0 — Qwiic 1+2 + header on GP2/GP3. */
+    {
+        cbor_writer_map(&w, 5);
+        cbor_writer_kv_uint(&w, "idx",      0);
+        cbor_writer_kv_uint(&w, "sda_pin",  2);
+        cbor_writer_kv_uint(&w, "scl_pin",  3);
+        cbor_writer_kv_uint(&w, "max_freq", 1000000);
+        cbor_writer_text_cstr(&w, "freqs");
+        cbor_writer_array(&w, 3);
+        cbor_writer_uint(&w, 100000);
+        cbor_writer_uint(&w, 400000);
+        cbor_writer_uint(&w, 1000000);
+    }
+
+    /* I²C #1 — Qwiic 3 + header on GP34/GP35. */
+    {
+        cbor_writer_map(&w, 5);
+        cbor_writer_kv_uint(&w, "idx",      1);
+        cbor_writer_kv_uint(&w, "sda_pin",  34);
+        cbor_writer_kv_uint(&w, "scl_pin",  35);
+        cbor_writer_kv_uint(&w, "max_freq", 1000000);
+        cbor_writer_text_cstr(&w, "freqs");
+        cbor_writer_array(&w, 3);
+        cbor_writer_uint(&w, 100000);
+        cbor_writer_uint(&w, 400000);
+        cbor_writer_uint(&w, 1000000);
     }
 
     /* ota descriptor */

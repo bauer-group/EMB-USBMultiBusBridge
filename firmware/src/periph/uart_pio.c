@@ -24,6 +24,7 @@
  */
 
 #include "uart_pio.h"
+#include "pin_broker.h"
 
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
@@ -162,6 +163,11 @@ int uart_pio_init(uart_pio_instance_t instance,
 
     s->tx_pin = tx_pin;
     s->rx_pin = rx_pin;
+
+    /* Claim the pins on the broker — a conflict is a firmware bug
+     * and propagates up as init failure. */
+    if (pin_broker_claim(tx_pin, PIN_OWNER_UART_PIO, PIN_FUNC_UART_TX) < 0) return -1;
+    if (pin_broker_claim(rx_pin, PIN_OWNER_UART_PIO, PIN_FUNC_UART_RX) < 0) return -1;
 
     init_tx_sm(s, baudrate);
     init_rx_sm(s, baudrate);

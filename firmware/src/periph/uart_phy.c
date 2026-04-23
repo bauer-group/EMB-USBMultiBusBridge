@@ -14,6 +14,7 @@
 
 #include "uart_phy.h"
 #include "uart_hw.h"
+#include "pin_broker.h"
 
 #include "hardware/gpio.h"
 
@@ -45,8 +46,16 @@ static void drive_all_low(void)
 
 /* ───── Public API ───────────────────────────────────────────────────── */
 
-void uart_phy_init(void)
+int uart_phy_init(void)
 {
+    /* All three pads belong to the phy module for their entire
+     * life, independent of which mode is active. The pin broker
+     * records the ownership so nothing else can silently take one
+     * of them for another purpose. */
+    if (pin_broker_claim(PIN_RS485_DE,   PIN_OWNER_UART_PHY, PIN_FUNC_GPIO_OUT) < 0) return -1;
+    if (pin_broker_claim(PIN_RS485_EN,   PIN_OWNER_UART_PHY, PIN_FUNC_GPIO_OUT) < 0) return -1;
+    if (pin_broker_claim(PIN_RS232_SHDN, PIN_OWNER_UART_PHY, PIN_FUNC_GPIO_OUT) < 0) return -1;
+
     setup_output(PIN_RS485_DE,   false);
     setup_output(PIN_RS485_EN,   false);
     setup_output(PIN_RS232_SHDN, false);
@@ -56,6 +65,7 @@ void uart_phy_init(void)
 
     g_mode = UART_PHY_OFF;
     g_initialised = true;
+    return 0;
 }
 
 int uart_phy_set(enum uart_phy_mode mode)

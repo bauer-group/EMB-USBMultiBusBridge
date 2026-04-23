@@ -35,6 +35,8 @@
 #include "rpbp/rpbp_transport.h"
 #include "cmd/cmd_sys.h"
 #include "usb/cdc_glue.h"
+#include "periph/pin_broker.h"
+#include "periph/i2c_hw.h"
 
 /*
  * Watchdog timeout. Must comfortably exceed any expected host-initiated
@@ -65,16 +67,22 @@
 #define RPBRIDGE_LED_B_PIN 24
 #endif
 
-static void led_init(void)
+static int led_init(void)
 {
     const uint pins[] = {
         RPBRIDGE_LED_R_PIN, RPBRIDGE_LED_G_PIN, RPBRIDGE_LED_B_PIN
     };
     for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); ++i) {
+        if (pin_broker_claim((uint8_t)pins[i],
+                             PIN_OWNER_SYSTEM,
+                             PIN_FUNC_GPIO_OUT) < 0) {
+            return -1;
+        }
         gpio_init(pins[i]);
         gpio_set_dir(pins[i], GPIO_OUT);
         gpio_put(pins[i], 1);    /* off: high (common anode) */
     }
+    return 0;
 }
 
 /* Write a binary colour triple: each component 0 or non-zero. */
@@ -135,11 +143,23 @@ int main(void)
     const bool boot_from_watchdog = watchdog_caused_reboot();
 
     stdio_init_all();
-    led_init();
+
+    /* The pin broker must exist before any module claims a GPIO;
+     * led_init(), cdc_glue_init() and i2c_hw_init_all() all call
+     * pin_broker_claim() internally. */
+    pin_broker_init();
+
+    if (led_init() != 0) {
+        /* Pin conflicts this early are firmware bugs — log on the
+         * debug UART and continue without the status LED so the rest
+         * of the USB stack at least still enumerates. */
+        printf("rpbridge: LED init failed (pin conflict)\n");
+    }
 
     tusb_init();
     rpbp_transport_init();
     cdc_glue_init();
+    i2c_hw_init_all();
 
     /*
      * Enable the watchdog only after USB + RPBP are up, so the device

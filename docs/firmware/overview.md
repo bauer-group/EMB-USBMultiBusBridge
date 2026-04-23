@@ -32,11 +32,14 @@ M6.
 | `src/usb/usb_descriptors.c`             | Composite device + BOS + vendor control-transfer.      |
 | `src/usb/ms_os_20.{c,h}`                | BOS platform capability + MS OS 2.0 descriptor set.    |
 | `src/usb/cdc_glue.{c,h}`                | CDC-ACM ↔ UART byte shuttle + TinyUSB class callbacks. |
+| `src/periph/pin_broker.{c,h}`           | 48-slot GPIO ownership ledger; every subsystem claims its pins here during init. |
 | `src/periph/uart_hw.{c,h}`              | IRQ-driven HW UART wrapper + optional software RS485 DE. |
 | `src/periph/uart_pio.{c,h}`             | PIO-backed 8N1 UART (PIO1, two SMs) with software rings. |
 | `src/periph/uart_phy.{c,h}`             | UART0 phy-bank selector (OFF / TTL / RS232 / RS485).   |
+| `src/periph/i2c_hw.{c,h}`               | RP2350 HW-I²C wrapper for both bus instances (Qwiic headers). |
 | `src/pio/uart_pio_tx.pio`               | PIO 8N1 TX program (8 cycles / bit).                   |
 | `src/pio/uart_pio_rx.pio`               | PIO 8N1 RX program with framing-error IRQ.             |
+| `src/cmd/cmd_i2c.{c,h}`                 | RPBP I²C subsystem (PROBE / XFER / SCAN / SET_FREQ / GET_FREQ). |
 
 ## System infrastructure
 

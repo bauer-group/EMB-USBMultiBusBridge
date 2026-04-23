@@ -25,6 +25,7 @@
  */
 
 #include "uart_hw.h"
+#include "pin_broker.h"
 
 #include "hardware/uart.h"
 #include "hardware/irq.h"
@@ -153,7 +154,13 @@ int uart_hw_init(uart_hw_instance_t instance, uint8_t tx_pin, uint8_t rx_pin)
     s->irq_num = inst_irq(instance);
     s->de_pin  = -1;               /* no DE pin unless explicitly set */
 
-    /* Route the pins first so the UART never drives a floating pad. */
+    /* Register the pins with the broker before handing them to the
+     * UART controller — a conflicting claim here is a firmware bug
+     * that should fail the init call early. */
+    if (pin_broker_claim(tx_pin, PIN_OWNER_UART_HW, PIN_FUNC_UART_TX) < 0) return -1;
+    if (pin_broker_claim(rx_pin, PIN_OWNER_UART_HW, PIN_FUNC_UART_RX) < 0) return -1;
+
+    /* Route the pins so the UART never drives a floating pad. */
     gpio_set_function(tx_pin, GPIO_FUNC_UART);
     gpio_set_function(rx_pin, GPIO_FUNC_UART);
 

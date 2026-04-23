@@ -46,11 +46,15 @@ enum uart_phy_mode {
 };
 
 /*
- * One-time init. Configures GP6 (DE), GP7 (RS485 EN) and GP8 (RS232
- * SHDN) as outputs, drives them all low (= OFF / TTL state), and
- * stores the initial mode. Call once during firmware bring-up.
+ * One-time init. Claims GP6 (DE), GP7 (RS485 EN) and GP8 (RS232
+ * SHDN) on the pin broker, configures them as outputs, drives them
+ * all low (= OFF / TTL state), and stores the initial mode. Call
+ * once during firmware bring-up.
+ *
+ * Returns 0 on success, -1 if the pin broker refuses any of the
+ * three claims (a firmware bug).
  */
-void uart_phy_init(void);
+int uart_phy_init(void);
 
 /*
  * Switch to a new phy mode. Returns 0 on success, -1 on invalid mode.

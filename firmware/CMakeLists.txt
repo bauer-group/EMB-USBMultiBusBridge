@@ -95,11 +95,14 @@ add_executable(rpbridge
     # Subsystem handlers.
     src/cmd/cmd_sys.c
     src/cmd/cmd_uart.c
+    src/cmd/cmd_i2c.c
 
     # Peripheral drivers.
+    src/periph/pin_broker.c
     src/periph/uart_hw.c
     src/periph/uart_pio.c
     src/periph/uart_phy.c
+    src/periph/i2c_hw.c
 
     # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding,
     # plus the CDC-ACM <-> UART byte-shuttle glue.
