@@ -95,12 +95,13 @@ add_executable(rpbridge
     # SYS subsystem (subsys = 0) handlers.
     src/cmd/cmd_sys.c
 
-    # USB composite descriptor set.
+    # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding.
     src/usb/usb_descriptors.c
+    src/usb/ms_os_20.c
 
     # See firmware/TODO.md for remaining modules: per-bus cmd handlers
     # (i2c/spi/gpio/pwm/adc/uart), pin broker, peripheral drivers, CAN
-    # glue, core1 scheduler, gs_usb compat layer, MS OS 2.0 descriptors.
+    # glue, core1 scheduler, gs_usb compat layer.
 )
 
 target_include_directories(rpbridge PRIVATE
@@ -161,10 +162,14 @@ target_link_libraries(rpbridge PRIVATE
     tinyusb_board
 )
 
-# stdio over CDC-ACM #3 (Debug Log); stdio over UART disabled so it doesn't
-# fight with the user UART lines.
-pico_enable_stdio_usb(rpbridge 1)
-pico_enable_stdio_uart(rpbridge 0)
+# stdio routes to UART1 on the 5-pin debug header (GP4/GP5). Enabling
+# pico's stdio_usb would try to add its own CDC-ACM class instance —
+# that conflicts with our hand-built composite descriptor (3 CDCs +
+# 2 vendors). When a CDC-based debug log is wanted, the firmware writes
+# directly to tud_cdc_n_write() on CDC-ACM index 2 ("rpbridge Debug
+# Log") — see src/usb/cdc_glue.c once the CDC glue module lands.
+pico_enable_stdio_usb(rpbridge 0)
+pico_enable_stdio_uart(rpbridge 1)
 
 pico_add_extra_outputs(rpbridge)
 

@@ -19,6 +19,9 @@
 #include "pico/unique_id.h"
 
 #include "version.h"
+#include "ms_os_20.h"
+
+#include <string.h>
 
 /* ───── VID / PID placeholder (to be assigned via pid.codes) ─────────── */
 
@@ -179,12 +182,54 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 }
 
 /*
- * BOS descriptor stub — when the MS OS 2.0 descriptor set lands (see
- * firmware/TODO.md), this returns the BOS with the platform capability
- * pointing at our descriptor blob. For now, return NULL so TinyUSB
- * answers "no BOS" — the device still enumerates correctly on Linux.
+ * BOS descriptor — carries the MS OS 2.0 platform capability. Windows
+ * 10 (1709+) reads this during enumeration and then fetches the
+ * descriptor set via the vendor control transfer handled below.
+ * Linux ignores BOS silently, so the same binary works everywhere.
  */
 uint8_t const *tud_descriptor_bos_cb(void)
 {
-    return NULL;
+    return desc_bos;
+}
+
+/*
+ * Vendor control-transfer handler. We only use it for the MS OS 2.0
+ * "GetMSDescriptor" request; any other vendor-class control request
+ * is rejected (the host's RPBP control channel uses bulk endpoints,
+ * not control transfers).
+ *
+ * Request shape:
+ *   bmRequestType = 0xC0  (Device-to-Host, Vendor, Device)
+ *   bRequest      = MS_OS_20_VENDOR_CODE  (our chosen code)
+ *   wValue        = 0
+ *   wIndex        = MS_OS_20_DESCRIPTOR_INDEX  (0x0007)
+ *   wLength       = requested byte count
+ */
+bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
+                                tusb_control_request_t const *request)
+{
+    /* Only SETUP carries the request we inspect; DATA and ACK stages
+     * are handled by TinyUSB's own machinery. */
+    if (stage != CONTROL_STAGE_SETUP) {
+        return true;
+    }
+
+    const uint8_t req_type  = request->bmRequestType_bit.type;
+    const uint8_t req_recip = request->bmRequestType_bit.recipient;
+    const uint8_t dir       = request->bmRequestType_bit.direction;
+
+    if (req_type  != TUSB_REQ_TYPE_VENDOR) return false;
+    if (dir       != TUSB_DIR_IN)          return false;
+    if (req_recip != TUSB_REQ_RCPT_DEVICE) return false;
+
+    if (request->bRequest == MS_OS_20_VENDOR_CODE &&
+        request->wIndex   == MS_OS_20_DESCRIPTOR_INDEX) {
+        const uint16_t cap = (uint16_t)desc_ms_os_20_len;
+        const uint16_t len = request->wLength < cap ? request->wLength : cap;
+        return tud_control_xfer(rhport, request,
+                                (void *)(uintptr_t)desc_ms_os_20, len);
+    }
+
+    /* Unknown vendor control request — stall the pipe. */
+    return false;
 }

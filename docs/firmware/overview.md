@@ -27,6 +27,20 @@ M6.
 | `src/rpbp/rpbp_transport.{c,h}`         | TinyUSB vendor-class glue, RX state machine, TX.       |
 | `src/cap/capabilities.{c,h}`            | Capability + identity map emitters.                    |
 | `src/cmd/cmd_sys.{c,h}`                 | SYS subsystem handlers (subsys = 0).                   |
+| `src/usb/tusb_config.h`                 | TinyUSB build-time configuration.                      |
+| `src/usb/usb_descriptors.c`             | Composite device + BOS + vendor control-transfer.      |
+| `src/usb/ms_os_20.{c,h}`                | BOS platform capability + MS OS 2.0 descriptor set.    |
+
+## System infrastructure
+
+| Concern                                 | Where / value                                          |
+|-----------------------------------------|--------------------------------------------------------|
+| **stdio** (`printf`)                    | Routed to UART1 on the 5-pin debug header (GP4/GP5). `stdio_usb` is disabled to avoid collision with the hand-built composite descriptor. |
+| **Watchdog**                            | Enabled in `main()` with a 3 s timeout; `pause_on_debug = true` so SWD breakpoints do not cause resets. Fed by the main loop every iteration. |
+| **Clock**                               | pico-sdk default — 150 MHz system clock, 48 MHz USB clock, XOSC startup delay multiplier set to 64 in the board header. |
+| **Reset cause reporting**               | `watchdog_caused_reboot()` is read at boot and surfaced in the UART1 banner line ("[recovered from watchdog reset]"). |
+| **Boot2 stage**                         | W25Q080 QSPI flash driver, chosen in `boards/rpbridge_rp2354b.h`. |
+| **Windows binding**                     | BOS descriptor advertises an MS OS 2.0 platform capability (UUID D8DD60DF-...). Windows 10 ≥ 1709 auto-binds WinUSB to interfaces 6 and 7 without INF or installer. See `src/usb/ms_os_20.c`. |
 
 ## Supported RPBP features today
 

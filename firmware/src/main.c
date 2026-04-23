@@ -26,6 +26,7 @@
 
 #include "pico/stdlib.h"
 #include "pico/time.h"
+#include "hardware/watchdog.h"
 #include "tusb.h"
 
 #include "version.h"
@@ -33,6 +34,17 @@
 #include "rpbp/rpbp.h"
 #include "rpbp/rpbp_transport.h"
 #include "cmd/cmd_sys.h"
+
+/*
+ * Watchdog timeout. Must comfortably exceed any expected host-initiated
+ * long operation (flash self-program is the worst case — ~200 ms). We
+ * settle on 3 s for the base firmware; individual handlers that need
+ * longer budget can call watchdog_update() themselves.
+ *
+ * The `pause_on_debug=true` flag keeps SWD debugging sessions from
+ * auto-resetting the part when a breakpoint is hit.
+ */
+#define RPBRIDGE_WATCHDOG_TIMEOUT_MS 3000u
 
 /* ──────────────────────────────────────────────────────────────────────
  * Status LED
@@ -113,23 +125,41 @@ static void led_tick(void)
 
 int main(void)
 {
+    /*
+     * Boot order: report whether the previous reset was caused by the
+     * watchdog (firmware hang) or something benign. The capability map
+     * exposes this later via a dedicated SYS field; for now we just
+     * log it.
+     */
+    const bool boot_from_watchdog = watchdog_caused_reboot();
+
     stdio_init_all();
     led_init();
 
     tusb_init();
     rpbp_transport_init();
 
-    /* Small delay so the first printf arrives after USB enumeration. */
-    sleep_ms(200);
-    printf("RPBridge firmware %s (RPBP v%u.%u.%u)\n",
+    /*
+     * Enable the watchdog only after USB + RPBP are up, so the device
+     * stays debuggable even if the USB stack takes unusually long to
+     * enumerate. From here on, the main loop MUST feed the dog at
+     * least every RPBRIDGE_WATCHDOG_TIMEOUT_MS.
+     */
+    watchdog_enable(RPBRIDGE_WATCHDOG_TIMEOUT_MS, true);
+
+    /* Brief delay so the first printf arrives after UART is quiet. */
+    sleep_ms(50);
+    printf("RPBridge firmware %s (RPBP v%u.%u.%u)%s\n",
            RPBRIDGE_GIT_DESCRIBE,
-           RPBP_VERSION_MAJOR, RPBP_VERSION_MINOR, RPBP_VERSION_PATCH);
+           RPBP_VERSION_MAJOR, RPBP_VERSION_MINOR, RPBP_VERSION_PATCH,
+           boot_from_watchdog ? " [recovered from watchdog reset]" : "");
 
     absolute_time_t next_led = make_timeout_time_ms(0);
 
     for (;;) {
         tud_task();
         rpbp_transport_poll();
+        watchdog_update();
 
         if (time_reached(next_led)) {
             led_tick();

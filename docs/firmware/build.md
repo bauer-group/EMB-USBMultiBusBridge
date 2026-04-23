@@ -1,5 +1,13 @@
 # Firmware — building and flashing
 
+The project pins two git submodules:
+
+- `firmware/third_party/pico-sdk` at tag **`2.2.0`** (commit `a1438df`).
+- `firmware/third_party/can2040` at commit **`2988d4f`** (v1.7.0-8).
+
+The pico-sdk itself carries nested submodules (TinyUSB `0.18.0`, lwIP,
+mbedtls, pico-cmake-utils). Always init recursively on the outer call:
+
 ```sh
 git submodule update --init --recursive firmware/third_party/pico-sdk \
                                         firmware/third_party/can2040

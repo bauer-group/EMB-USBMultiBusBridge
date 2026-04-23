@@ -1,11 +1,11 @@
 [submodule "firmware/third_party/pico-sdk"]
-	path   = firmware/third_party/pico-sdk
-	url    = https://github.com/raspberrypi/pico-sdk.git
+	path = firmware/third_party/pico-sdk
+	url = https://github.com/raspberrypi/pico-sdk.git
 	branch = 2.2.0
 	update = checkout
 
 [submodule "firmware/third_party/can2040"]
-	path   = firmware/third_party/can2040
-	url    = https://github.com/KevinOConnor/can2040.git
+	path = firmware/third_party/can2040
+	url = https://github.com/KevinOConnor/can2040.git
 	branch = master
 	update = checkout
