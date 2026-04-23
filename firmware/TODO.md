@@ -127,3 +127,74 @@ authoritative spec section.
       frames consumed by firmware tests and userspace Rust
 - [ ] Loopback self-test (`SELFTEST` opcode) exercising every bus on
       the live device
+
+## M9 — Driver-priority mode (dual USB configuration)
+
+Architecture captured in [ADR-0004](../docs/adr/0004-driver-priority-mode.md).
+Endpoint / configuration budget tracked in
+[`docs/firmware/resource-budget.md`](../docs/firmware/resource-budget.md).
+
+**Goal:** when the `rpbridge` Linux kernel driver is loaded, the
+device re-enumerates to a driver-native USB configuration (vendor-
+only interfaces, no CDC-ACMs). When the driver is not loaded, the
+device stays in the Compat configuration and every inbox USB class
+driver binds normally.
+
+Depends on M2 (I²C) + M3 (SPI/GPIO/PWM/ADC) + M5 (CAN) having
+landed their RPBP stream-channel definitions — we only know which
+channels to carry over the vendor pipe once the subsystems are up.
+
+### M9a — descriptor infrastructure
+
+- [ ] Add `bNumConfigurations = 2` to `desc_device` and a second
+      configuration descriptor block in `usb_descriptors.c`.
+- [ ] Add `iConfiguration` strings ("Compat", "Native").
+- [ ] `tud_descriptor_configuration_cb(index)` returns the right
+      descriptor array for the requested index.
+- [ ] Verify `tud_cdc_n_ready()` degrades cleanly in Config 2
+      (CDC FIFOs are never enumerated, their handlers are no-ops).
+
+### M9b — per-config behaviour
+
+- [ ] Emit an `EVENT` on channel 1 when the active configuration
+      changes (host-side audit log).
+- [ ] `cdc_glue.c` early-exits cheaply when `tud_ready()` returns
+      false — no wasted cycles in driver-native mode.
+- [ ] RPBP capability map reports `"mode": "compat" | "native"` and
+      the mapping between stream-channel numbers and logical
+      functions (UART1 RS232, UART1 RS485, UART1 TTL, UART2 TTL,
+      I²C #0, I²C #1, SPI #0, SPI #1, GPIO bank #0, PWM chip #0,
+      ADC #0).
+
+### M9c — kernel-driver wiring
+
+Implemented in `driver/src/core_driver.rs`:
+
+- [ ] On `probe()` detect we are on Config 1 (CDC+Vendor) and issue
+      `usb_driver_set_configuration(dev, 2)` to hop to Native.
+- [ ] Handle re-probe on Config 2 (vendor-only) idempotently.
+- [ ] On `disconnect()` let the host-side `usb_reset_configuration()`
+      restore Config 1 automatically at next `open()`.
+- [ ] Gate aux children on the subsystems advertised in the
+      capability map.
+
+### M9d — native tty layer
+
+- [ ] `tty_driver` that backs `/dev/ttyRPB-rs232`,
+      `/dev/ttyRPB-rs485`, `/dev/ttyRPB-ttl`, `/dev/ttyRPB-pio`
+      over RPBP stream channels. Full termios support; the driver
+      forwards SetLineCoding-equivalent RPBP commands to the
+      firmware.
+- [ ] udev rules list both sets of symlinks — `rpbridge-uart1-*`
+      (Config 1) and `ttyRPB-*` (Config 2) — so scripts that were
+      written against Compat mode keep working after the driver
+      loads.
+
+### M9e — integration tests
+
+- [ ] umockdev recording of the Compat → Native config switch,
+      replayable in CI.
+- [ ] KUnit test that asserts re-binding lands on Config 2.
+- [ ] End-to-end test on real hardware: unplug, plug with driver
+      loaded, observe `/dev/ttyRPB*` appearing within 1 s; unload
+      driver, replug, observe `/dev/rpbridge-uart1-*` appearing.

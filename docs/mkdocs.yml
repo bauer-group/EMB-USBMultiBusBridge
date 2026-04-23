@@ -107,6 +107,7 @@ nav:
       - Overview: firmware/overview.md
       - Building & flashing: firmware/build.md
       - OTA update: firmware/ota.md
+      - Resource budget: firmware/resource-budget.md
   - Linux driver:
       - Overview: driver/overview.md
       - Building & loading: driver/build.md

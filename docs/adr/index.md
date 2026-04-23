@@ -13,6 +13,7 @@ design drafts).
 | 0001 | [USB protocol framing choice](0001-protocol-choice.md)          | Accepted |
 | 0002 | [Linux driver bus pattern — `auxiliary_bus`](0002-driver-bus-choice.md) | Accepted |
 | 0003 | [Language choice — Rust in kernel and userspace](0003-language-choice.md) | Accepted |
+| 0004 | [Driver-priority mode via dual USB configuration](0004-driver-priority-mode.md) | Accepted |
 
 Adding a new ADR? Copy the template from `0001-…` and bump the number.
 Every ADR changes the repository — reference it from the code it
