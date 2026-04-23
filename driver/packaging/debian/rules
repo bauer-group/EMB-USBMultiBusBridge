@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+# SPDX-License-Identifier: GPL-2.0
+#
+# Debian packaging rules for the rpbridge-dkms source package.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# Extract VERSION from the source tarball name (or from git describe
+# fallback during native builds). The @VERSION@ token in dkms.conf.in
+# is rewritten at dh_dkms time.
+RPBRIDGE_VERSION := $(shell dpkg-parsechangelog -SVersion | cut -d- -f1)
+
+%:
+	dh $@ --with dkms
+
+override_dh_auto_build:
+	@echo "rpbridge-dkms is a source-only package — nothing to build here."
+
+override_dh_dkms:
+	sed "s/@VERSION@/$(RPBRIDGE_VERSION)/g" driver/dkms.conf.in > driver/dkms.conf
+	dh_dkms -V $(RPBRIDGE_VERSION)
+
+override_dh_auto_test:
+	@echo "DKMS source package: deferring tests to the post-build hook."

@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+[package]
+name          = "rpbridge-bench"
+description   = "Latency and throughput benchmark harness for RPBridge"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+authors       = { workspace = true }
+repository    = { workspace = true }
+publish       = false
+
+[[bin]]
+name = "rpbridge-bench"
+path = "src/main.rs"
+
+[dependencies]
+rpbridge          = { workspace = true }
+rpbridge-protocol = { workspace = true }
+
+clap              = { workspace = true }
+anyhow            = { workspace = true }
+tracing           = { workspace = true }
+tracing-subscriber = { workspace = true }

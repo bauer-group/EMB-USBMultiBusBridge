@@ -1,0 +1,2 @@
+driver/udev/70-rpbridge.rules       lib/udev/rules.d
+driver/modprobe/rpbridge.conf       etc/modprobe.d

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+[package]
+name          = "rpbridge"
+description   = "High-level client library for the RPBridge USB multi-bus bridge"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+authors       = { workspace = true }
+repository    = { workspace = true }
+readme        = "README.md"
+keywords      = ["rpbridge", "usb", "i2c", "spi", "gpio"]
+categories    = ["hardware-support", "embedded"]
+
+[features]
+# `nusb` is the pure-Rust default backend; `rusb` is there for platforms
+# where libusb is already installed and system-integrated.
+default  = ["nusb-backend"]
+nusb-backend = ["dep:nusb", "dep:tokio", "dep:futures"]
+rusb-backend = ["dep:rusb"]
+
+[dependencies]
+rpbridge-protocol = { workspace = true, features = ["cbor"] }
+
+nusb    = { workspace = true, optional = true }
+rusb    = { workspace = true, optional = true }
+tokio   = { workspace = true, optional = true }
+futures = { version = "0.3", optional = true }
+
+thiserror = { workspace = true }
+tracing   = { workspace = true }

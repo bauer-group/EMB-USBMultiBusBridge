@@ -1,0 +1,131 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Build outputs
+# ──────────────────────────────────────────────────────────────────────────
+build/
+build-*/
+out/
+dist/
+*.o
+*.obj
+*.a
+*.lo
+*.la
+*.ko
+*.ko.cmd
+*.mod
+*.mod.c
+*.mod.o
+*.mod.dwo
+*.dwo
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# Firmware artifacts (keep them in Releases, not in git)
+*.uf2
+*.elf
+*.bin
+*.hex
+*.dis
+*.map
+*.lst
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+Testing/
+_deps/
+install_manifest.txt
+
+# Rust / Cargo
+target/
+**/*.rs.bk
+Cargo.lock.old
+perf.data
+perf.data.old
+flamegraph.svg
+
+# Kernel build byproducts
+*.symvers
+Module.symvers
+modules.order
+.tmp_versions/
+.[oas].cmd
+.*.d
+.*.tmp
+.config
+.config.old
+scripts/basic/
+Modules.symvers
+
+# DKMS
+*.dkms.tar.gz
+
+# Python (docs + tooling)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+site/
+
+# Node (if ever used for docs tooling)
+node_modules/
+.npm/
+
+# IDE / editor scratch files
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Hardware CAD
+hardware/**/backup/
+hardware/**/*-backups/
+hardware/**/fp-info-cache
+hardware/**/*.lck
+hardware/**/*.bak
+
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+coverage/
+lcov.info
+
+# Secrets / local overrides
+*.key
+*.pem
+!docs/**/*.pem
+.secrets/
+.env
+.env.local
+settings.local.json
+
+# Debug
+core
+core.*
+vgcore.*
+
+# CI local (act)
+.act/

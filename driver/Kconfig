@@ -1,0 +1,23 @@
+config RPBRIDGE
+	tristate "RPBridge USB multi-bus bridge driver"
+	depends on USB && RUST
+	depends on AUXILIARY_BUS
+	help
+	  This driver exposes the RPBridge USB multi-bus developer tool
+	  (built on the Raspberry Pi RP2354B) as a set of standard Linux
+	  subsystems: I²C adapter, SPI controller, GPIO chip with IRQ
+	  support, IIO ADC, PWM chip, and an auxiliary transport for the
+	  userspace control tools.
+
+	  CAN uses a separate gs_usb-compatible USB vendor interface that
+	  is bound by the mainline drivers/net/can/usb/gs_usb.ko driver —
+	  this module does not duplicate it.
+
+	  The driver is written entirely in Rust-for-Linux. It requires a
+	  kernel with CONFIG_RUST=y and a pinned Rust toolchain that
+	  matches the kernel's Rust version.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called rpbridge.

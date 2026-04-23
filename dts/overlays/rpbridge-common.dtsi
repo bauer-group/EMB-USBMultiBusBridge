@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+//
+// Common DT fragment that declares the synthetic bus nodes the driver
+// creates for each advertised subsystem. Daughterboard overlays
+// target these paths (target-path = "/rpbridge-i2c-0", …).
+//
+// Included from every concrete overlay .dts in this directory.
+
+/ {
+    rpbridge-i2c-0 {
+        compatible     = "rpbridge,i2c";
+        #address-cells = <1>;
+        #size-cells    = <0>;
+    };
+
+    rpbridge-i2c-1 {
+        compatible     = "rpbridge,i2c";
+        #address-cells = <1>;
+        #size-cells    = <0>;
+    };
+
+    rpbridge-spi-0 {
+        compatible     = "rpbridge,spi";
+        #address-cells = <1>;
+        #size-cells    = <0>;
+    };
+
+    rpbridge-gpio-0 {
+        compatible = "rpbridge,gpio";
+    };
+};

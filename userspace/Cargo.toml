@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+#
+# Cargo workspace for the RPBridge userspace tree.
+#
+# Three member crates:
+#   - rpbridge-protocol  : no_std-capable RPBP v1 framing library;
+#                          shared ground truth for every binding.
+#   - rpbridge           : high-level client (libusb / nusb backend,
+#                          capability discovery, per-bus handles).
+#   - rpbridge-ctl       : the user-facing CLI.
+#   - rpbridge-bench     : latency + throughput benchmarking harness.
+
+[workspace]
+resolver = "2"
+members = [
+    "rpbridge-protocol",
+    "rpbridge",
+    "rpbridge-ctl",
+    "rpbridge-bench",
+]
+
+[workspace.package]
+version       = "0.1.0"
+edition       = "2021"
+rust-version  = "1.80"
+license       = "Apache-2.0 OR MIT"
+authors       = ["BAUER GROUP <kb@de.bauer-group.com>"]
+repository    = "https://github.com/bauer-group/USB-Multi-Bus-Bridge"
+homepage      = "https://rpbridge.org"
+readme        = "README.md"
+categories    = ["embedded", "hardware-support"]
+keywords      = ["usb", "rp2350", "i2c", "spi", "can"]
+
+[workspace.dependencies]
+# Local members
+rpbridge-protocol = { path = "rpbridge-protocol", version = "0.1.0" }
+rpbridge          = { path = "rpbridge",          version = "0.1.0" }
+
+# Transport
+nusb       = "0.1"
+rusb       = "0.9"
+
+# Framing / encoding
+byteorder  = "1.5"
+crc32c     = "0.6"
+ciborium   = "0.2"
+
+# Async + CLI
+tokio      = { version = "1.40", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+anyhow     = "1.0"
+thiserror  = "2.0"
+clap       = { version = "4.5", features = ["derive", "wrap_help", "env"] }
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Test support
+proptest   = "1.5"
+pretty_assertions = "1.4"
+
+[profile.release]
+opt-level      = 3
+lto            = "thin"
+codegen-units  = 1
+debug          = 1         # keep line-number info for panic backtraces
+strip          = "debuginfo"
+panic          = "abort"
+
+[profile.dev]
+opt-level = 0
+debug     = 2
+incremental = true

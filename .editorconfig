@@ -1,0 +1,41 @@
+root = true
+
+[*]
+charset                  = utf-8
+end_of_line              = lf
+insert_final_newline     = true
+trim_trailing_whitespace = true
+indent_style             = space
+indent_size              = 4
+max_line_length          = 100
+
+# Kernel / firmware C code follows kernel style (tabs, 80 cols)
+[driver/**/*.{c,h}]
+indent_style    = tab
+tab_width       = 8
+max_line_length = 100
+
+[firmware/src/**/*.{c,h,cpp,hpp}]
+indent_style = space
+indent_size  = 4
+
+# Rust — rustfmt default
+[*.rs]
+indent_size      = 4
+max_line_length  = 100
+
+# YAML / TOML / JSON
+[*.{yml,yaml,toml,json}]
+indent_size = 2
+
+# Shell
+[*.sh]
+indent_size = 2
+
+# Markdown — keep trailing spaces (line breaks)
+[*.md]
+trim_trailing_whitespace = false
+
+# Makefile requires tabs
+[{Makefile,*.mk,Kbuild,Kconfig}]
+indent_style = tab

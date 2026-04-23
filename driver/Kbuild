@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Kbuild recipe for the RPBridge Rust kernel driver.
+#
+# Rust-for-Linux compiles each Rust crate as a single rlib — out-of-tree
+# we follow the pattern used by drivers/rust/ in-tree: one module entry
+# per crate, with all submodules declared in src/lib.rs.
+#
+# Set CONFIG_RPBRIDGE=m in the kernel config (or rely on DKMS, which
+# passes -C CONFIG_MODULES=y M=$PWD to the kernel build system).
+#
+# Requires: Rust-for-Linux enabled in the target kernel
+# (CONFIG_RUST=y, CONFIG_RUSTC_VERSION compatible with the kernel's
+# pinned toolchain; see rust-toolchain.toml).
+
+obj-m := rpbridge.o
+
+# Rust-for-Linux consumes a single top-level source file per module,
+# conventionally named `<modname>.rs` and placed at the module root.
+# Our sources live under src/ — we symlink src/lib.rs to rpbridge.rs
+# at build time (see Makefile), so Kbuild can find it.
+rpbridge-y := src/lib.o
+
+# Enable additional warnings specific to our code (the kernel's default
+# flags already include `-W warnings` for the core lints).
+ccflags-y := -DRPBRIDGE_MODULE
+
+# If you have a Rust-aware cargo-clippy pass, you can feed extra lint
+# flags here via RUSTFLAGS in the wrapper Makefile.

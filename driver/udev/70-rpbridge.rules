@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# udev rules for the RPBridge USB multi-bus bridge.
+#
+# Install: copy to /etc/udev/rules.d/70-rpbridge.rules (or the matching
+# path under /lib/udev/rules.d/ if installed via a .deb/.rpm package),
+# then `sudo udevadm control --reload && sudo udevadm trigger`.
+#
+# VID/PID below is a pid.codes test-range allocation and MUST be replaced
+# with the project's real allocation before a public release.
+
+# Access + stable symlink for the composite RPBridge device.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    MODE="0660", GROUP="plugdev", TAG+="uaccess", \
+    SYMLINK+="rpbridge%n"
+
+# Access + stable symlink for the RP2350 ROM-BOOTSEL device
+# (picotool / UF2 mass-storage target).
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", \
+    MODE="0660", GROUP="plugdev", TAG+="uaccess", \
+    SYMLINK+="rpbridge-bootsel"
+
+# The three CDC-ACM virtual serial ports (UART 1, UART 2, Debug Log)
+# become /dev/ttyACM*, which udev already handles. We add per-interface
+# descriptive symlinks so scripts can address them by role rather than
+# guessing enumeration order.
+SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
+    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{bInterfaceNumber}=="00", \
+    MODE="0660", GROUP="dialout", \
+    SYMLINK+="rpbridge-uart1"
+
+SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
+    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{bInterfaceNumber}=="02", \
+    MODE="0660", GROUP="dialout", \
+    SYMLINK+="rpbridge-uart2"
+
+SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
+    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{bInterfaceNumber}=="04", \
+    MODE="0660", GROUP="dialout", \
+    SYMLINK+="rpbridge-debug"

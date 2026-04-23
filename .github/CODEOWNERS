@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Default owner for everything in the repository — the primary
+# maintainer. Add sub-team handles here once the project grows beyond
+# a single-owner setup.
+
+*                       @bauer-group/rpbridge-maintainers
+
+/firmware/              @bauer-group/firmware
+/driver/                @bauer-group/linux-driver
+/userspace/             @bauer-group/userspace
+/docs/                  @bauer-group/docs
+/hardware/              @bauer-group/hardware
+/.github/               @bauer-group/ci

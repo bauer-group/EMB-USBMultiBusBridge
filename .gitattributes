@@ -1,0 +1,57 @@
+# Default to LF line endings in the repo, normalize on commit
+* text=auto eol=lf
+
+# Scripts must stay LF
+*.sh        text eol=lf
+*.py        text eol=lf
+
+# Windows-specific wrappers
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Source code — explicit for clarity
+*.c         text diff=cpp
+*.h         text diff=cpp
+*.cpp       text diff=cpp
+*.hpp       text diff=cpp
+*.rs        text diff=rust
+*.toml      text
+*.yaml      text
+*.yml       text
+*.md        text diff=markdown
+
+# Firmware / binary artifacts must never be mangled
+*.uf2       binary
+*.elf       binary
+*.bin       binary
+*.hex       text
+*.dtb       binary
+*.dtbo      binary
+*.a         binary
+*.so        binary
+*.so.*      binary
+*.dll       binary
+*.dylib     binary
+*.pdf       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.webp      binary
+
+# KiCad files — binary per Kicad recommendation
+*.kicad_pcb  text eol=lf
+*.kicad_sch  text eol=lf
+*.kicad_pro  text eol=lf
+*.kicad_sym  text eol=lf
+*.kicad_mod  text eol=lf
+
+# Exclude certain noise from `git diff --stat` / `gh pr view`
+docs/drafts/*                 linguist-documentation
+docs/**                       linguist-documentation
+*.md                          linguist-documentation
+
+# Generated
+userspace/**/Cargo.lock       -diff

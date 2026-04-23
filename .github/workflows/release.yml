@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: Apache-2.0
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to attach artefacts to the GitHub Release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a tagged release mid-flight
+
+jobs:
+  firmware:
+    uses: ./.github/workflows/firmware.yml
+
+  userspace:
+    uses: ./.github/workflows/userspace.yml
+
+  driver:
+    uses: ./.github/workflows/driver.yml
+
+  publish:
+    name: publish GitHub Release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [firmware, userspace, driver]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten release artefacts
+        run: |
+          mkdir -p release
+          find dist -type f \( \
+               -name '*.uf2' -o -name '*.elf' -o -name '*.bin' \
+            -o -name '*.hex' -o -name 'rpbridge-ctl' \
+            -o -name 'size.txt' \
+          \) -exec cp -v {} release/ \;
+          ( cd release && sha256sum * > CHECKSUMS.txt )
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: spdx-json
+          output-file: release/rpbridge-sbom.spdx.json
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          {
+            echo "## What's Changed"
+            PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo '')
+            if [ -n "$PREV" ]; then
+              git log --pretty=format:'* %s (%h)' "$PREV"..HEAD
+            else
+              git log --pretty=format:'* %s (%h)' HEAD -n 50
+            fi
+            echo ""; echo ""
+            echo "## Artefacts"
+            echo '* `rpbridge.uf2` — RP2354B firmware image.'
+            echo '* `rpbridge-ctl` — CLI (x86_64, aarch64 variants).'
+            echo '* `rpbridge-sbom.spdx.json` — SPDX SBOM.'
+            echo '* `CHECKSUMS.txt` — SHA-256 of every artefact.'
+          } > release_notes.md
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') }}

@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: Apache-2.0
+name: firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware.yml'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware.yml'
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PICO_SDK_PATH:  ${{ github.workspace }}/firmware/third_party/pico-sdk
+  CCACHE_DIR:     ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 500M
+
+jobs:
+  build:
+    name: build (${{ matrix.board }} / ${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        board:       [rpbridge_rp2354b]
+        build_type:  [Release, RelWithDebInfo]
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+            python3 python3-pip \
+            libusb-1.0-0-dev pkg-config
+
+      - name: Verify toolchain
+        run: |
+          arm-none-eabi-gcc --version
+          cmake --version
+          ninja --version
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: firmware-${{ matrix.board }}-${{ matrix.build_type }}
+          max-size: 500M
+          variant: ccache
+
+      - name: Configure
+        working-directory: firmware
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DPICO_BOARD=${{ matrix.board }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        working-directory: firmware
+        run: cmake --build build --parallel
+
+      - name: Size report
+        working-directory: firmware
+        run: |
+          arm-none-eabi-size --format=berkeley build/rpbridge.elf | tee build/size.txt
+          arm-none-eabi-size -A          build/rpbridge.elf | tee -a build/size.txt
+
+      - name: Checksums
+        working-directory: firmware/build
+        run: |
+          sha256sum rpbridge.uf2 rpbridge.elf rpbridge.bin rpbridge.hex \
+            > CHECKSUMS.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.board }}-${{ matrix.build_type }}
+          path: |
+            firmware/build/rpbridge.uf2
+            firmware/build/rpbridge.elf
+            firmware/build/rpbridge.bin
+            firmware/build/rpbridge.hex
+            firmware/build/size.txt
+            firmware/build/CHECKSUMS.txt
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+[package]
+name          = "rpbridge-protocol"
+description   = "RPBP v1 — RPBridge USB wire-format library (no_std-capable)"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+authors       = { workspace = true }
+repository    = { workspace = true }
+readme        = "README.md"
+categories    = ["embedded", "encoding", "no-std"]
+keywords      = ["rpbridge", "rpbp", "protocol", "usb"]
+
+[features]
+default  = ["std"]
+# When `std` is disabled, the crate compiles as `no_std + alloc` for
+# kernel / firmware-host contexts. The CRC-32C table and all framing
+# helpers stay identical.
+std      = []
+# Opt-in CBOR helpers for the capability-map payload. Implementation
+# depends on `ciborium`, which needs alloc — not available in the most
+# constrained `no_std` embedded targets.
+cbor     = ["std", "dep:ciborium"]
+
+[dependencies]
+ciborium = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest           = { workspace = true }
+pretty_assertions  = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

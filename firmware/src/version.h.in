@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) 2026 BAUER GROUP
+ *
+ * Generated at configure time from firmware/src/version.h.in.
+ * Do not edit the generated header — edit the .in template instead.
+ */
+#pragma once
+
+#define RPBRIDGE_VERSION_MAJOR        @PROJECT_VERSION_MAJOR@
+#define RPBRIDGE_VERSION_MINOR        @PROJECT_VERSION_MINOR@
+#define RPBRIDGE_VERSION_PATCH        @PROJECT_VERSION_PATCH@
+#define RPBRIDGE_VERSION_STR          "@PROJECT_VERSION@"
+#define RPBRIDGE_GIT_DESCRIBE         "@RPBRIDGE_GIT_DESCRIBE@"
+
+/* RPBP protocol version — decoupled from firmware version deliberately. */
+#define RPBP_VERSION_MAJOR            1
+#define RPBP_VERSION_MINOR            0
+#define RPBP_VERSION_PATCH            0
