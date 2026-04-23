@@ -95,13 +95,18 @@ add_executable(rpbridge
     # SYS subsystem (subsys = 0) handlers.
     src/cmd/cmd_sys.c
 
-    # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding.
+    # Peripheral drivers.
+    src/periph/uart_hw.c
+
+    # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding,
+    # plus the CDC-ACM <-> UART byte-shuttle glue.
     src/usb/usb_descriptors.c
     src/usb/ms_os_20.c
+    src/usb/cdc_glue.c
 
-    # See firmware/TODO.md for remaining modules: per-bus cmd handlers
-    # (i2c/spi/gpio/pwm/adc/uart), pin broker, peripheral drivers, CAN
-    # glue, core1 scheduler, gs_usb compat layer.
+    # See firmware/TODO.md for remaining modules: I2C / SPI / GPIO /
+    # PWM / ADC subsystem handlers, pin broker, PIO-UART, RS485-DE
+    # applet, CAN (can2040 + gs_usb), core1 scheduler.
 )
 
 target_include_directories(rpbridge PRIVATE

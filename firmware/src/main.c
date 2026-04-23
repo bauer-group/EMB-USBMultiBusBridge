@@ -34,6 +34,7 @@
 #include "rpbp/rpbp.h"
 #include "rpbp/rpbp_transport.h"
 #include "cmd/cmd_sys.h"
+#include "usb/cdc_glue.h"
 
 /*
  * Watchdog timeout. Must comfortably exceed any expected host-initiated
@@ -138,6 +139,7 @@ int main(void)
 
     tusb_init();
     rpbp_transport_init();
+    cdc_glue_init();
 
     /*
      * Enable the watchdog only after USB + RPBP are up, so the device
@@ -159,6 +161,7 @@ int main(void)
     for (;;) {
         tud_task();
         rpbp_transport_poll();
+        cdc_glue_poll();
         watchdog_update();
 
         if (time_reached(next_led)) {

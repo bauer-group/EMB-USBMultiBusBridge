@@ -71,7 +71,7 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  6
+#define RPBRIDGE_FEATURE_COUNT  7
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
@@ -80,6 +80,7 @@ static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "time-sync",
     "crc32c.sw",        /* software CRC for v1; hw DMA SNIFFER path pending */
     "firmware-update",
+    "uart.ttl",         /* CDC-ACM #0 <-> UART0 HW (phy-switch pending) */
 };
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
@@ -120,12 +121,29 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     }
 
     /*
-     * buses: empty map in the v1 scaffold. As peripheral handlers come
-     * online (SYS + I2C is the minimum viable; then SPI/GPIO/…), each
-     * registers a per-bus descriptor and the count here updates.
+     * buses: one entry per bus family that the firmware currently
+     * advertises. Each family's value is an array of instance
+     * descriptors so hosts can enumerate them uniformly.
+     *
+     * Present today:
+     *   - "uart": CDC-ACM #0 <-> UART0 HW (phy-bank, currently TTL).
+     *
+     * Pending: I2C, SPI, GPIO, PWM, ADC, CAN, 1-Wire.
      */
     cbor_writer_text_cstr(&w, "buses");
-    cbor_writer_map(&w, 0);
+    cbor_writer_map(&w, 1);
+
+    cbor_writer_text_cstr(&w, "uart");
+    cbor_writer_array(&w, 1);
+    {
+        /* one instance: CDC-ACM index 0, HW backend, max 3 Mbaud */
+        cbor_writer_map(&w, 5);
+        cbor_writer_kv_uint(&w, "idx",      0);
+        cbor_writer_kv_uint(&w, "cdc",      0);
+        cbor_writer_kv_text(&w, "backend",  "hw");
+        cbor_writer_kv_uint(&w, "max_baud", 3000000);
+        cbor_writer_kv_text(&w, "phy",      "ttl");
+    }
 
     /* ota descriptor */
     cbor_writer_text_cstr(&w, "ota");

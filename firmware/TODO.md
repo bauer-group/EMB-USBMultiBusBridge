@@ -44,9 +44,35 @@ authoritative spec section.
 
 ## M4 — CDC-ACM bridge to HW UART / RS485-DE applet
 
-- [ ] `src/usb/cdc_glue.c` — route CDC RX/TX to the selected UART phy
-- [ ] `src/periph/uart_hw.{c,h}`
-- [ ] `src/pio/rs485_de.pio` — precision DE assert/deassert
+### M4a — HW UART bridge (CDC #0 <-> UART0)
+
+- [x] `src/periph/uart_hw.{c,h}` — IRQ-driven RX/TX ring buffers
+      around the RP2350 HW UART; 2 KB RX / 1 KB TX per instance.
+- [x] `src/usb/cdc_glue.{c,h}` — CDC-ACM #0 <-> UART0 HW byte shuttle
+      with back-pressure on both sides; TinyUSB callbacks for line
+      coding, line state (DTR/RTS), and send-break.
+- [x] Capability map advertises `"uart.ttl"` and a single
+      `buses.uart` instance (CDC-ACM index 0, HW backend).
+
+### M4b — PIO UART bridge (CDC #1)
+
+- [ ] PIO UART TX / RX programs (from pico-examples, extended with
+      break-detection and RX-error flags).
+- [ ] Second `uart_hw`-equivalent module for the PIO path — same
+      public API, different backend.
+- [ ] Wire CDC-ACM #1 in `cdc_glue.c` and add a second
+      `buses.uart` entry to the capability map.
+
+### M4c — UART0 phy-bank switch
+
+- [ ] RPBP UART subsystem opcode `SET_PHY { ttl | rs232 | rs485 }`
+      driving GP7 (RS485 EN), GP8 (RS232 /SHDN), MAX3232 + SN65HVD72.
+- [ ] Capability features gain `"uart.rs232"` and `"uart.rs485"`.
+
+### M4d — RS485 precision DE
+
+- [ ] `src/pio/rs485_de.pio` — DE assert/deassert co-clocked with
+      UART0 TX; configurable guard interval.
 
 ## M5 — CAN over PIO (can2040)
 

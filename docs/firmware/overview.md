@@ -30,6 +30,8 @@ M6.
 | `src/usb/tusb_config.h`                 | TinyUSB build-time configuration.                      |
 | `src/usb/usb_descriptors.c`             | Composite device + BOS + vendor control-transfer.      |
 | `src/usb/ms_os_20.{c,h}`                | BOS platform capability + MS OS 2.0 descriptor set.    |
+| `src/usb/cdc_glue.{c,h}`                | CDC-ACM ↔ UART byte shuttle + TinyUSB class callbacks. |
+| `src/periph/uart_hw.{c,h}`              | IRQ-driven HW UART wrapper with RX/TX ring buffers.    |
 
 ## System infrastructure
 
