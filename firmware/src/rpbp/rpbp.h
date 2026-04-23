@@ -159,7 +159,7 @@ enum rpbp_uart_op {
  * SET_PHY with ENOTSUP.
  *
  * Integer values are stable wire ABI — they mirror
- * enum uart_phy_mode in firmware/src/periph/uart_phy.h.
+ * enum uart_phy_mode in firmware/src/peripherals/uart_phy.h.
  */
 enum rpbp_uart_phy {
     RPBP_UART_PHY_OFF   = 0,

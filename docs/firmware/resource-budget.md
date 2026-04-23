@@ -163,7 +163,7 @@ M5 completion. No capacity concern.
 ## 5. GPIO ownership
 
 The pin broker
-([`firmware/src/periph/pin_broker.{c,h}`](../../firmware/src/periph/pin_broker.c))
+([`firmware/src/peripherals/pin_broker.{c,h}`](../../firmware/src/peripherals/pin_broker.c))
 owns the runtime ledger. Every module that takes a pin MUST call
 `pin_broker_claim()` during init; overlapping claims return
 `-RPBP_EBUSY` and fail the init. The board header

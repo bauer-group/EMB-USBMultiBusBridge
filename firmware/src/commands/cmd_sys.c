@@ -12,7 +12,7 @@
 #include "rpbp/rpbp_framing.h"
 #include "rpbp/rpbp_dispatch.h"
 #include "rpbp/rpbp_cbor.h"
-#include "cap/capabilities.h"
+#include "capabilities/capabilities.h"
 #include "version.h"
 
 #include "pico/time.h"

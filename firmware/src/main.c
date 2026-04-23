@@ -33,10 +33,10 @@
 
 #include "rpbp/rpbp.h"
 #include "rpbp/rpbp_transport.h"
-#include "cmd/cmd_sys.h"
+#include "commands/cmd_sys.h"
 #include "usb/cdc_glue.h"
-#include "periph/pin_broker.h"
-#include "periph/i2c_hw.h"
+#include "peripherals/pin_broker.h"
+#include "peripherals/i2c_hw.h"
 
 /*
  * Watchdog timeout. Must comfortably exceed any expected host-initiated

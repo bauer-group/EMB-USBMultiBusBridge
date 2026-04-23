@@ -17,24 +17,24 @@ authoritative spec section.
 - [x] `src/rpbp/rpbp_transport.{c,h}` — TinyUSB vendor RX/TX state
       machine with resync
 - [x] `src/cap/capabilities.{c,h}` — CBOR capability + identity emitters
-- [x] `src/cmd/cmd_sys.{c,h}` — SYS subsystem handlers (all 9 opcodes
+- [x] `src/commands/cmd_sys.{c,h}` — SYS subsystem handlers (all 9 opcodes
       from `docs/protocol/subsystems/sys.md`)
 - [x] `src/main.c` — TinyUSB + transport pump in the main loop
 - [x] `tests/host/` — host-side unit tests for CRC, framing, CBOR
 
 ## M2 — HW-I²C + pin broker
 
-- [x] `src/periph/pin_broker.{c,h}` — 48-slot ownership ledger.
+- [x] `src/peripherals/pin_broker.{c,h}` — 48-slot ownership ledger.
       Conflicts return `-RPBP_EBUSY`; idempotent re-claims by the
       same owner update the function tag. Existing modules
       (`uart_hw`, `uart_pio`, `uart_phy`, LED init) claim through
       the broker; future subsystems must do the same.
-- [x] `src/periph/i2c_hw.{c,h}` — `hardware_i2c` wrapper with
+- [x] `src/peripherals/i2c_hw.{c,h}` — `hardware_i2c` wrapper with
       timeout-bounded blocking transfers. Supports 100 k / 400 k /
       1 M baud, write / read / write-restart-read patterns, and
       the pin broker. DMA path deferred to M6 (no real consumer
       needs it before streaming lands).
-- [x] `src/cmd/cmd_i2c.{c,h}` — RPBP opcodes `PROBE (0x00)`,
+- [x] `src/commands/cmd_i2c.{c,h}` — RPBP opcodes `PROBE (0x00)`,
       `XFER (0x01)`, `SCAN (0x02)`, `SET_FREQ (0x03)`,
       `GET_FREQ (0x04)`; spec at
       [`docs/protocol/subsystems/i2c.md`](../docs/protocol/subsystems/i2c.md).
@@ -45,11 +45,11 @@ authoritative spec section.
 
 ## M3 — SPI + GPIO + PWM + ADC
 
-- [ ] `src/periph/spi.{c,h}` + `src/cmd/cmd_spi.c`
-- [ ] `src/periph/gpio.{c,h}` + `src/cmd/cmd_gpio.c` (+ IRQ events
+- [ ] `src/peripherals/spi.{c,h}` + `src/commands/cmd_spi.c`
+- [ ] `src/peripherals/gpio.{c,h}` + `src/commands/cmd_gpio.c` (+ IRQ events
       over channel 1)
-- [ ] `src/periph/pwm.{c,h}` + `src/cmd/cmd_pwm.c`
-- [ ] `src/periph/adc.{c,h}` + `src/cmd/cmd_adc.c` (single-shot + IIO
+- [ ] `src/peripherals/pwm.{c,h}` + `src/commands/cmd_pwm.c`
+- [ ] `src/peripherals/adc.{c,h}` + `src/commands/cmd_adc.c` (single-shot + IIO
       streaming)
 - [ ] LED brightness via PWM instead of binary GPIO in `main.c`
 
@@ -57,7 +57,7 @@ authoritative spec section.
 
 ### M4a — HW UART bridge (CDC #0 <-> UART0)
 
-- [x] `src/periph/uart_hw.{c,h}` — IRQ-driven RX/TX ring buffers
+- [x] `src/peripherals/uart_hw.{c,h}` — IRQ-driven RX/TX ring buffers
       around the RP2350 HW UART; 2 KB RX / 1 KB TX per instance.
 - [x] `src/usb/cdc_glue.{c,h}` — CDC-ACM #0 <-> UART0 HW byte shuttle
       with back-pressure on both sides; TinyUSB callbacks for line
@@ -69,15 +69,20 @@ authoritative spec section.
 
 - [x] `src/pio/uart_pio_tx.pio` / `uart_pio_rx.pio` — 8N1 PIO
       programs ported from pico-examples, with RX framing-error IRQ.
-- [x] `src/periph/uart_pio.{c,h}` — PIO-backed UART with the same
+- [x] `src/peripherals/uart_pio.{c,h}` — PIO-backed UART with the same
       public API as `uart_hw` (ring buffers, line-coding, tick).
+      **8N1 only** — the `.pio` programs are framing-locked; non-8N1
+      `SetLineCoding` requests are counted + clamped and the
+      constraint is advertised as `"uart.pio.8n1-only"` and
+      `framing: ["8n1"]` in the capability map. An open-config PIO
+      UART (alternate programs + runtime selector) is a future item.
 - [x] `cdc_glue.c` bridges CDC-ACM #1 to uart_pio instance 0
       (GP33 TX / GP36 RX on PIO1). Capability map lists the 2nd
       instance under `buses.uart`.
 
 ### M4c — UART0 phy-bank switch
 
-- [x] `src/periph/uart_phy.{c,h}` — GP6/GP7/GP8 state machine with
+- [x] `src/peripherals/uart_phy.{c,h}` — GP6/GP7/GP8 state machine with
       safe off-then-on transitions.
 - [x] RPBP UART subsystem (subsys = 6): opcodes `SET_PHY (0x00)` and
       `GET_PHY (0x01)`; spec at `docs/protocol/subsystems/uart.md`.

@@ -17,7 +17,7 @@
 
 #include "rpbp/rpbp.h"
 #include "rpbp/rpbp_dispatch.h"
-#include "periph/uart_phy.h"
+#include "peripherals/uart_phy.h"
 
 #define UART_IDX_HW   0u   /* matches uart_phy / uart_hw instance 0 */
 #define UART_IDX_PIO  1u   /* PIO-UART #2, TTL-only                  */

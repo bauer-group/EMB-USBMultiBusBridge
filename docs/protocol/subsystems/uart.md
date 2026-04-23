@@ -159,7 +159,7 @@ to LOW once the hardware BUSY flag clears — i.e. after the last
 stop bit has fully shifted out.
 
 The scaffold uses a software state machine ticked from the main
-loop (see `firmware/src/periph/uart_hw.c::uart_hw_tick`). A later
+loop (see `firmware/src/peripherals/uart_hw.c::uart_hw_tick`). A later
 PIO applet may replace it for bit-precise timing at > 1 Mbaud, but
 the current implementation is timing-correct at all supported baud
 rates (up to 3 Mbaud) with a tick period ≤ 5 ms.
@@ -173,6 +173,43 @@ forwards `SetLineCoding` directly to the underlying UART (HW or
 PIO). Any of the three UART0 CDCs may reconfigure UART0 since they
 share the same hardware backend.
 
+### HW UART (CDC #0..2)
+
+Honours the full CDC-ACM line-coding matrix: 5..8 data bits, 1 or 2
+stop bits, parity NONE / ODD / EVEN, baud 0..3 Mbaud. Mark / space
+parity is not supported and is treated as NONE.
+
+### PIO UART (CDC #3) — 8N1 only
+
+The PIO-UART is driven by hand-written `.pio` programs that are
+hard-wired to **8 data bits, no parity, 1 stop bit (8N1)**. The
+firmware cannot honour other framings without shipping additional
+PIO programs and a runtime selector, so it handles non-8N1
+`SetLineCoding` requests as follows:
+
+- The baud rate is always applied verbatim (the SM clock divider is
+  framing-independent).
+- Data bits / stop bits / parity that differ from 8 / 1 / NONE are
+  clamped to 8N1 on the wire.
+- A per-instance counter (`framing_clamped`) is incremented so hosts
+  can detect the divergence via SELFTEST / stats read-out.
+- The first clamped request per boot also emits a one-shot warning
+  on the debug UART (UART1 on GP4/GP5) for bring-up diagnostics.
+
+The constraint is advertised up-front in two places in the
+capability map:
+
+1. Feature flag `"uart.pio.8n1-only"` in the top-level `features`
+   array — cheap to test.
+2. Explicit `framing: ["8n1"]` key on the PIO-UART bus entry under
+   `buses.uart` — machine-readable and future-proof. HW UART
+   entries omit this field, which a host MAY interpret as "any
+   standard CDC-ACM framing supported".
+
+Host userspace SHOULD probe either channel before opening the
+PIO COM port with a non-8N1 `termios` config and warn the user
+rather than silently ship corrupted bytes.
+
 ## Capability-map advertising
 
 Each CDC appears under `buses.uart` in the capability map. Each
@@ -184,7 +221,12 @@ entry carries:
 - `phy` (text) — `"rs232" | "rs485" | "ttl"`.
 - `max_baud` (uint).
 - `de_pin` (uint, optional) — present only on RS485 entries.
+- `framing` (text array, optional) — list of supported line-coding
+  framings. Present on backends with framing restrictions (e.g. the
+  PIO UART, which lists `["8n1"]`). Absent = any standard CDC-ACM
+  framing is accepted by the backend.
 
-Feature flags `"uart.ttl"`, `"uart.rs232"`, `"uart.rs485"` are
-advertised in the top-level `features` array so hosts can gate
-capability-based behaviour cheaply without walking the bus array.
+Feature flags `"uart.ttl"`, `"uart.rs232"`, `"uart.rs485"`, and
+`"uart.pio.8n1-only"` are advertised in the top-level `features`
+array so hosts can gate capability-based behaviour cheaply without
+walking the bus array.

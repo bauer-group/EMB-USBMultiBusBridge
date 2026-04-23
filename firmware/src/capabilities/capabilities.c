@@ -71,21 +71,22 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  12
+#define RPBRIDGE_FEATURE_COUNT  13
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
     "credit-fc",
     "events",
     "time-sync",
-    "crc32c.sw",        /* software CRC for v1; hw DMA SNIFFER path pending */
+    "crc32c.sw",           /* software CRC for v1; hw DMA SNIFFER path pending */
     "firmware-update",
-    "uart.ttl",         /* both uart instances can drive TTL                */
-    "uart.rs232",       /* UART0 phy-bank: MAX3232                          */
-    "uart.rs485",       /* UART0 phy-bank: SN65HVD72 + software DE          */
-    "i2c.100k",         /* I²C Standard-mode                                */
-    "i2c.400k",         /* I²C Fast-mode                                    */
-    "i2c.1m",           /* I²C Fast-mode Plus                               */
+    "uart.ttl",            /* both uart instances can drive TTL                */
+    "uart.rs232",          /* UART0 phy-bank: MAX3232                          */
+    "uart.rs485",          /* UART0 phy-bank: SN65HVD72 + software DE          */
+    "uart.pio.8n1-only",   /* PIO-UART framing is hard-wired to 8N1            */
+    "i2c.100k",            /* I²C Standard-mode                                */
+    "i2c.400k",            /* I²C Fast-mode                                    */
+    "i2c.1m",              /* I²C Fast-mode Plus                               */
 };
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
@@ -173,14 +174,21 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
     }
 
-    /* CDC #3 — PIO-UART on GP33/GP36 (TTL-only, header #2). */
+    /* CDC #3 — PIO-UART on GP33/GP36 (TTL-only, header #2).
+     * Carries an explicit `framing` array so hosts don't have to rely
+     * on the `"uart.pio.8n1-only"` feature flag alone — the PIO
+     * programs are hard-wired to 8N1 and SetLineCoding requests for
+     * other framings are clamped on-device (see uart_pio.h). */
     {
-        cbor_writer_map(&w, 5);
+        cbor_writer_map(&w, 6);
         cbor_writer_kv_uint(&w, "idx",      1);
         cbor_writer_kv_uint(&w, "cdc",      3);
         cbor_writer_kv_text(&w, "backend",  "pio");
         cbor_writer_kv_text(&w, "phy",      "ttl");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
+        cbor_writer_text_cstr(&w, "framing");
+        cbor_writer_array(&w, 1);
+        cbor_writer_text_cstr(&w, "8n1");
     }
 
     /*

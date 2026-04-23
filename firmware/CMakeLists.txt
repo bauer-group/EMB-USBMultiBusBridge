@@ -90,19 +90,19 @@ add_executable(rpbridge
     src/rpbp/rpbp_transport.c
 
     # Capability-map emitter.
-    src/cap/capabilities.c
+    src/capabilities/capabilities.c
 
     # Subsystem handlers.
-    src/cmd/cmd_sys.c
-    src/cmd/cmd_uart.c
-    src/cmd/cmd_i2c.c
+    src/commands/cmd_sys.c
+    src/commands/cmd_uart.c
+    src/commands/cmd_i2c.c
 
     # Peripheral drivers.
-    src/periph/pin_broker.c
-    src/periph/uart_hw.c
-    src/periph/uart_pio.c
-    src/periph/uart_phy.c
-    src/periph/i2c_hw.c
+    src/peripherals/pin_broker.c
+    src/peripherals/uart_hw.c
+    src/peripherals/uart_pio.c
+    src/peripherals/uart_phy.c
+    src/peripherals/i2c_hw.c
 
     # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding,
     # plus the CDC-ACM <-> UART byte-shuttle glue.

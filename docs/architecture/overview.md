@@ -41,7 +41,7 @@ be tested in isolation.
 │  │   I/O scheduler · DMA IRQ · PIO service · streams    │    │
 │  └──────────────────────────────────────────────────────┘    │
 │                                                              │
-│  HW periph:  2×UART · 2×I²C · 2×SPI · 24×PWM · 8×ADC         │
+│  HW peripherals: 2×UART · 2×I²C · 2×SPI · 24×PWM · 8×ADC     │
 │  PIO0: can2040 (3 SMs) — CAN 2.0B via software controller    │
 │  PIO1: extra UARTs, RS485-DE precision timing                │
 │  PIO2: 1-Wire, WS2812, spare applets                         │

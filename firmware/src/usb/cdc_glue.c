@@ -45,15 +45,17 @@
  */
 
 #include "cdc_glue.h"
-#include "periph/uart_hw.h"
-#include "periph/uart_pio.h"
-#include "periph/uart_phy.h"
+#include "peripherals/uart_hw.h"
+#include "peripherals/uart_pio.h"
+#include "peripherals/uart_phy.h"
 
 #include "tusb.h"
 #include "hardware/uart.h"
 
-#include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
 /* ───── CDC index layout ─────────────────────────────────────────────── */
 
@@ -251,11 +253,29 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
     case CDC_ITF_UART1_TTL:
         uart_hw_set_line_coding(0u, p->bit_rate, p->data_bits, stop, parity);
         break;
-    case CDC_ITF_UART2_TTL:
-        /* PIO-UART is 8N1-only; the set_line_coding helper silently
-         * clamps data/stop/parity and only touches the baud divider. */
-        uart_pio_set_line_coding(0u, p->bit_rate, p->data_bits, stop, parity);
+    case CDC_ITF_UART2_TTL: {
+        /* PIO-UART is 8N1-only — see peripherals/uart_pio.h header-block.
+         * The helper applies the baud, clamps framing, and returns +1
+         * when it had to clamp so we can log and count it instead of
+         * pretending the request was honoured. */
+        int rc = uart_pio_set_line_coding(0u, p->bit_rate,
+                                          p->data_bits, stop, parity);
+        if (rc == 1) {
+            /* One-shot stdio warning per boot — the stats counter is
+             * authoritative, this is just a bring-up hint on UART1. */
+            static bool warned_clamp;
+            if (!warned_clamp) {
+                warned_clamp = true;
+                printf("[uart-pio] host requested %lu-%u-%u-%u; clamped to "
+                       "8N1 (PIO programs are framing-locked)\n",
+                       (unsigned long)p->bit_rate,
+                       (unsigned)p->data_bits,
+                       (unsigned)p->parity,
+                       (unsigned)p->stop_bits);
+            }
+        }
         break;
+    }
     default:
         break;
     }

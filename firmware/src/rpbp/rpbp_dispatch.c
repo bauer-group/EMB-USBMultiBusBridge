@@ -13,9 +13,9 @@
 
 #include "pico/time.h"
 
-#include "cmd/cmd_sys.h"
-#include "cmd/cmd_uart.h"
-#include "cmd/cmd_i2c.h"
+#include "commands/cmd_sys.h"
+#include "commands/cmd_uart.h"
+#include "commands/cmd_i2c.h"
 
 #include <string.h>
 

@@ -182,20 +182,30 @@ int uart_pio_set_line_coding(uart_pio_instance_t instance,
                              uint8_t  stop_bits,
                              uint8_t  parity)
 {
-    (void)data_bits;  /* clamped to 8 by the PIO programs */
-    (void)stop_bits;  /* clamped to 1                     */
-    (void)parity;     /* clamped to NONE                  */
-
     if (instance >= NUM_UART_PIO_INSTANCES) return -1;
     if (baudrate == 0u)                     return -1;
 
     struct uart_pio_state *s = &g_uarts[instance];
     if (!s->initialised) return -1;
 
+    /* Apply the baud first — this is the only thing we can actually
+     * honour. Framing divergence is handled separately below. */
     float div = compute_clkdiv(baudrate);
     pio_sm_set_clkdiv(s->pio, s->sm_tx, div);
     pio_sm_set_clkdiv(s->pio, s->sm_rx, div);
     pio_clkdiv_restart_sm_mask(s->pio, (1u << s->sm_tx) | (1u << s->sm_rx));
+
+    /* Detect non-8N1 line-coding requests. The PIO programs are
+     * framing-locked (see uart_pio.h header-block), so rather than
+     * silently pretending to honour 7E2 / 8O1 / etc. we count the
+     * mismatch and signal it upward via the return value. */
+    bool framing_ok = (data_bits == 8u)
+                   && (stop_bits == 1u)
+                   && (parity    == UART_PIO_PARITY_NONE);
+    if (!framing_ok) {
+        s->stats.framing_clamped++;
+        return 1;
+    }
     return 0;
 }
 

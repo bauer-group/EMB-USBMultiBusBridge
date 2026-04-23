@@ -10,7 +10,7 @@
 
 #include "rpbp/rpbp.h"
 #include "rpbp/rpbp_dispatch.h"
-#include "periph/i2c_hw.h"
+#include "peripherals/i2c_hw.h"
 
 #include <string.h>
 
