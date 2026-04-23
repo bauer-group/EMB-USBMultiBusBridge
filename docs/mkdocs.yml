@@ -100,6 +100,8 @@ nav:
       - Specification: protocol/rpbp-v1.md
       - Capability map: protocol/capabilities.md
       - Error codes: protocol/status-codes.md
+      - Fragmentation: protocol/fragmentation.md
+      - SYS subsystem: protocol/subsystems/sys.md
   - Firmware:
       - Overview: firmware/overview.md
       - Building & flashing: firmware/build.md

@@ -4,19 +4,20 @@
  *
  * RPBP — RPBridge Protocol, v1.
  *
- * Wire format (little-endian):
+ * Authoritative spec: docs/protocol/rpbp-v1.md.
+ *
+ * Wire layout (little-endian throughout):
  *
  *     +------- 16 B header -------+----- 0..N payload -----+-- 4 B CRC --+
- *     | magic=0x52 | ver | mtype  |                        | CRC-32C     |
- *     | flags      | channel (2)  |                        | Castagnoli  |
- *     | seq (2)                   |                        | over        |
+ *     | magic=0x52 | ver=0x01     |                        | CRC-32C     |
+ *     | msg_type   | flags        |                        | Castagnoli  |
+ *     | channel(2) | seq(2)       |                        | over        |
  *     | payload_len (4)           |                        | header      |
- *     | ts_us (4, device-boot)    |                        | + payload   |
+ *     | timestamp_us (4)          |                        | + payload   |
  *     +---------------------------+------------------------+-------------+
  *
- * Authoritative specification: docs/drafts/rpbridge-driver-stack.md §4 and
- * docs/protocol/rpbp-v1.md (once written). In case of conflict, the driver-
- * stack draft wins.
+ * Every enum / constant in this header is stable wire ABI — changes
+ * require a MAJOR version bump.
  */
 
 #ifndef RPBP_H
@@ -30,15 +31,24 @@
 extern "C" {
 #endif
 
+/* ───── Wire constants ───────────────────────────────────────────────── */
+
 #define RPBP_MAGIC              0x52u   /* 'R' */
 #define RPBP_VERSION            0x01u
 #define RPBP_HEADER_LEN         16u
 #define RPBP_CRC_LEN            4u
-#define RPBP_MTU_DEFAULT        512u
 #define RPBP_MAX_PAYLOAD_LEN    4096u
 #define RPBP_MAX_FRAME_LEN      (RPBP_HEADER_LEN + RPBP_MAX_PAYLOAD_LEN + RPBP_CRC_LEN)
 
-/* Message types — canonical integer values, stable across protocol minors. */
+/*
+ * Reassembly ceiling. A v1 receiver MUST handle at least 65 536 bytes
+ * of reassembled payload; we set ours to that minimum. Larger targets
+ * advertise a different value via the capability map.
+ */
+#define RPBP_MAX_REASSEMBLED_LEN    (64u * 1024u)
+
+/* ───── Message types ────────────────────────────────────────────────── */
+
 enum rpbp_msg_type {
     RPBP_MT_HELLO          = 0x00,
     RPBP_MT_CAPABILITIES   = 0x01,
@@ -54,7 +64,8 @@ enum rpbp_msg_type {
     RPBP_MT_TIME_SYNC      = 0x0B,
 };
 
-/* Header flag bits. */
+/* ───── Header flags ─────────────────────────────────────────────────── */
+
 #define RPBP_FL_CBOR            (1u << 0)
 #define RPBP_FL_COMPRESSED      (1u << 1)
 #define RPBP_FL_URGENT          (1u << 2)
@@ -62,12 +73,62 @@ enum rpbp_msg_type {
 #define RPBP_FL_LAST            (1u << 4)
 #define RPBP_FL_CONTINUATION    (1u << 5)
 
-/* Reserved channel numbers — see driver-stack draft §4.5. */
-#define RPBP_CHAN_CONTROL       0u
-#define RPBP_CHAN_EVENTS        1u
-#define RPBP_CHAN_BROADCAST     0xFFFFu
+#define RPBP_FL_RESERVED_MASK   ((uint8_t)0xC0)    /* bits 6,7 must be zero */
 
-/* POSIX-style status codes used by CMD_RESPONSE and ERROR payloads. */
+/*
+ * FRAGMENT=1 + LAST=1 is illegal. The implementation SHOULD treat it
+ * as a protocol error and respond with RPBP_EPROTO. Use rpbp_flags_valid()
+ * to check.
+ */
+static inline bool rpbp_flags_valid(uint8_t flags)
+{
+    if ((flags & RPBP_FL_RESERVED_MASK) != 0)
+        return false;
+    if ((flags & RPBP_FL_FRAGMENT) && (flags & RPBP_FL_LAST))
+        return false;
+    return true;
+}
+
+/* ───── Channels ─────────────────────────────────────────────────────── */
+
+#define RPBP_CHAN_CONTROL       ((uint16_t)0u)
+#define RPBP_CHAN_EVENTS        ((uint16_t)1u)
+#define RPBP_CHAN_DYN_MIN       ((uint16_t)16u)
+#define RPBP_CHAN_DYN_MAX       ((uint16_t)239u)
+#define RPBP_CHAN_VENDOR_MIN    ((uint16_t)240u)
+#define RPBP_CHAN_VENDOR_MAX    ((uint16_t)254u)
+#define RPBP_CHAN_BROADCAST     ((uint16_t)0xFFFFu)
+
+/* ───── Subsystem IDs (CMD_REQUEST / CMD_RESPONSE payload byte 0) ───── */
+
+enum rpbp_subsys {
+    RPBP_SUBSYS_SYS    = 0x00,
+    RPBP_SUBSYS_I2C    = 0x01,
+    RPBP_SUBSYS_SPI    = 0x02,
+    RPBP_SUBSYS_GPIO   = 0x03,
+    RPBP_SUBSYS_PWM    = 0x04,
+    RPBP_SUBSYS_ADC    = 0x05,
+    RPBP_SUBSYS_UART   = 0x06,
+    /* 0x07..0x7F reserved */
+    /* 0x80..0xFF vendor */
+};
+
+/* ───── SYS opcodes (subsys = 0) ─────────────────────────────────────── */
+
+enum rpbp_sys_op {
+    RPBP_SYS_GET_CAPABILITIES = 0x00,
+    RPBP_SYS_ECHO             = 0x01,
+    RPBP_SYS_REBOOT_BOOTSEL   = 0x02,
+    RPBP_SYS_UPTIME           = 0x03,
+    RPBP_SYS_GET_VBUS_MV      = 0x04,
+    RPBP_SYS_SET_LED          = 0x05,
+    RPBP_SYS_SELFTEST         = 0x06,
+    RPBP_SYS_GET_IDENTITY     = 0x07,
+    RPBP_SYS_RESET            = 0x08,
+};
+
+/* ───── Status codes ─────────────────────────────────────────────────── */
+
 enum rpbp_status {
     RPBP_OK         = 0,
     RPBP_EAGAIN     = 1,
@@ -86,53 +147,18 @@ enum rpbp_status {
     RPBP_EOVERFLOW  = 14,
 };
 
-/*
- * Parsed/validated header. The wire form is always the raw 16 bytes;
- * this struct is the firmware's in-memory view after rpbp_header_parse().
- * Note: timestamp_us is filled in by the TX path from the local timer —
- * not by the caller.
- */
+/* ───── In-memory header view ────────────────────────────────────────── */
+
 struct rpbp_header {
-    uint8_t  magic;        /* == RPBP_MAGIC */
-    uint8_t  version;      /* == RPBP_VERSION for v1 frames */
-    uint8_t  msg_type;     /* enum rpbp_msg_type */
-    uint8_t  flags;        /* RPBP_FL_* */
+    uint8_t  magic;
+    uint8_t  version;
+    uint8_t  msg_type;
+    uint8_t  flags;
     uint16_t channel;
     uint16_t seq;
-    uint32_t payload_len;  /* excludes header + CRC */
+    uint32_t payload_len;
     uint32_t timestamp_us;
 };
-
-/*
- * Serialize the header into a 16-byte buffer, little-endian. `dst` must
- * point to at least RPBP_HEADER_LEN bytes of writable memory.
- */
-void rpbp_header_encode(const struct rpbp_header *h,
-                        uint8_t dst[RPBP_HEADER_LEN]);
-
-/*
- * Parse a 16-byte header from the wire. Returns RPBP_OK on success,
- * RPBP_EPROTO if magic/version are wrong, RPBP_EMSGSIZE if payload_len
- * exceeds RPBP_MAX_PAYLOAD_LEN.
- */
-enum rpbp_status rpbp_header_parse(const uint8_t src[RPBP_HEADER_LEN],
-                                   struct rpbp_header *out);
-
-/*
- * Compute the trailing CRC-32C over header + payload and write it as
- * little-endian 32-bit into `crc_out`. `hdr` must be a valid encoded
- * header (16 B) immediately followed by `payload_len` payload bytes in
- * host memory.
- */
-void rpbp_frame_seal(const uint8_t *hdr_plus_payload, size_t hdr_plus_payload_len,
-                     uint8_t crc_out[RPBP_CRC_LEN]);
-
-/*
- * Full-frame validation: check magic/version, length bounds, and CRC.
- * Returns RPBP_OK on a well-formed frame.
- */
-enum rpbp_status rpbp_frame_validate(const uint8_t *frame, size_t frame_len,
-                                     struct rpbp_header *hdr_out);
 
 #ifdef __cplusplus
 }

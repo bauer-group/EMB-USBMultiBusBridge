@@ -82,17 +82,25 @@ configure_file(
 add_executable(rpbridge
     src/main.c
 
-    # RPBP protocol core (framing + CRC-32C). Host-portable, no SDK deps.
+    # RPBP v1 protocol core.
     src/rpbp/rpbp_framing.c
     src/rpbp/rpbp_crc32c.c
+    src/rpbp/rpbp_cbor.c
+    src/rpbp/rpbp_dispatch.c
+    src/rpbp/rpbp_transport.c
+
+    # Capability-map emitter.
+    src/cap/capabilities.c
+
+    # SYS subsystem (subsys = 0) handlers.
+    src/cmd/cmd_sys.c
 
     # USB composite descriptor set.
     src/usb/usb_descriptors.c
 
-    # See firmware/TODO.md for the remaining modules that need to be
-    # added here as they are implemented: dispatch, capabilities,
-    # per-subsystem cmd handlers, pin broker, peripheral drivers, CAN
-    # glue, core1 scheduler, gs_usb compat layer.
+    # See firmware/TODO.md for remaining modules: per-bus cmd handlers
+    # (i2c/spi/gpio/pwm/adc/uart), pin broker, peripheral drivers, CAN
+    # glue, core1 scheduler, gs_usb compat layer, MS OS 2.0 descriptors.
 )
 
 target_include_directories(rpbridge PRIVATE
@@ -161,13 +169,8 @@ pico_enable_stdio_uart(rpbridge 0)
 pico_add_extra_outputs(rpbridge)
 
 # ──────────────────────────────────────────────────────────────────────────
-# Host-side unit tests (CRC, RPBP framing, CBOR capability serializer).
-# These compile on the host toolchain with `-DRPBRIDGE_HOST_TESTS=ON`.
+# Host-side unit tests live in firmware/tests/host/ as a **separate**,
+# standalone CMake project that uses the host compiler (not the pico-sdk
+# cross-toolchain). This avoids mixing toolchain contexts in one build
+# tree. See firmware/tests/host/README.md for the usage pattern.
 # ──────────────────────────────────────────────────────────────────────────
-
-option(RPBRIDGE_HOST_TESTS "Build host-side unit tests for RPBP framing" OFF)
-
-if(RPBRIDGE_HOST_TESTS)
-    enable_testing()
-    add_subdirectory(tests)
-endif()
