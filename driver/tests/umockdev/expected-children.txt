@@ -1,0 +1,16 @@
+# Expected aux_device children spawned by rpbridge.ko when bound
+# against the rpbridge-attach.umockdev recording of a rev-B device
+# advertising the default capability map (I²C x2, SPI x2, GPIO x1,
+# PWM x1, ADC x1). UART and CAN are absent on purpose per ADR-0006:
+# CDCs go to usbser, and the CAN vendor interface goes to gs_usb.
+#
+# Format: one aux_device bus-path per line. The replay script does
+# a sorted set-compare against /sys/bus/auxiliary/devices.
+
+rpbridge-gpio.0
+rpbridge-i2c.0
+rpbridge-i2c.1
+rpbridge-iio.0
+rpbridge-pwm.0
+rpbridge-spi.0
+rpbridge-spi.1
