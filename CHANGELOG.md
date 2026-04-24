@@ -11,6 +11,7 @@ combinations.
 ## [Unreleased]
 
 ### Added
+
 - Repository scaffolding: firmware (pico-sdk pinned to `2.1.1`), Linux C
   driver skeleton (auxiliary_bus-based), Rust userspace workspace, mkdocs
   documentation site, CI workflow scaffolds.
@@ -80,16 +81,53 @@ combinations.
   `client_tests` modules cover every opcode byte-for-byte plus
   errno propagation (EBUSY, ETIMEDOUT, ENODEV, ENOTSUP).
 
+### Fixed
+
+- **Fat-pointer cookie bug across all 5 FFI modules.** Every
+  `ffi/{gpio,i2c,spi,pwm,iio}.rs` stored `Box::into_raw(Box<dyn
+  Trait>)` as a thin `*mut c_void`, discarding the trait object's
+  vtable. First callback from the kernel would have dereferenced
+  a garbage vtable and Oops'd the whole subsystem. Replaced with a
+  double-Box pattern (`Box<Box<dyn Trait>>`) so the outer pointer
+  is thin and safe to round-trip through `c_void`, while the inner
+  box retains the fat trait pointer with its vtable intact.
+- **IIO channels array missing.** `iio_device_register()` rejects
+  `num_channels > 0` with a NULL `channels` array. Populated a
+  static `rpbridge_iio_channels[]` in the shim with the canonical
+  rev-B map (4 voltage + 1 temperature) and clamped
+  `num_channels` at allocation time.
+- **IIO triggered-buffer stub would crash.** The call
+  `iio_triggered_buffer_setup(indio, NULL, NULL, NULL)` passes
+  NULL pollfunc handlers, which the IIO core dereferences.
+  Stubbed the setup / teardown / push helpers to return `-ENOSYS`
+  / no-op; async streaming is now explicitly an M12 deliverable.
+- **SPI shim against 6.18 API.** Replaced `spi_alloc_master` with
+  `spi_alloc_host` (renamed in 6.17), replaced direct
+  `spi_device->chip_select` access with `spi_get_chipselect()`,
+  and added the missing `spi_finalize_current_message` call so
+  the second and subsequent SPI messages actually get scheduled.
+- **PWM shim against 6.18 API.** `pwm_chip` has been opaque since
+  6.10; replaced the `kzalloc + container_of` pattern with
+  `pwmchip_alloc(parent, npwm, sizeof(void*))` + `pwmchip_priv()`
+  cookie access + `pwmchip_put()` on teardown.
+- **`new_mutex!` import.** Added explicit `use kernel::sync::new_mutex;`
+  in core_driver; the macro is not reliably in the prelude on 6.18.
+- **Interface pointer cast.** Replaced the `core::mem::transmute`
+  on `&kernel::usb::Interface` with an explicit pointer cast chain
+  that documents the transparent-layout assumption in one place.
+
 ### Changed
 
 - ADR-0004 (dual USB configuration) marked as Superseded by ADR-0005
   in the ADR index.
-- Driver status changed from "client-layer complete, kernel-adapter
-  blocked on R4L bindings" to **functionally complete on Linux
-  6.13 LTS+**. All five non-UART / non-CAN subsystems expose their
-  standard `/dev/*` + `/sys/class/*` interfaces; `libgpiod`,
-  `i2c-tools`, `spidev_test`, `pwm-utils`, and `iio_info` work
-  unchanged.
+- **Kernel baseline bumped from 6.13 LTS to 6.18** in
+  `driver/kernel-baseline/SUPPORT.md`. 6.13 was aspirational —
+  `kernel::usb::Driver` only exists from 6.18 (Daniel Almeida /
+  Collabora), so the driver can't actually compile against
+  anything older. 6.13..6.17 now listed as unsupported.
+- Driver status reflected honestly in `driver/TODO.md` — code
+  structure complete + post-audit bug sweep applied, but
+  `make`/KUnit/umockdev/e2e-on-hardware all remain "not yet run".
 
 ### Notes
 

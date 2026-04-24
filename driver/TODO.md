@@ -85,8 +85,34 @@ See `CHANGELOG.md` `[Unreleased] → Added` for the M10 bullet list.
       manifest.
 - [x] `tests/e2e.md` — 10-section hardware checklist.
 
+## Validation status
+
+Honest state as of the current commit series:
+
+| Layer | Status | Notes |
+| --- | --- | --- |
+| Code structure | **✓ complete** | All M11 milestones landed in atomic commits. |
+| Post-audit bug sweep | **✓ applied** | Fat-pointer (5 modules), IIO channel array, SPI/PWM 6.18 API, new_mutex import, kernel baseline bump — all fixed. |
+| `make` against 6.18 kernel | **☐ not yet run** | No compile gate in CI; needs a kernel-headers-equipped build host. First run likely surfaces small delta issues. |
+| KUnit-for-Rust execution | **☐ not yet run** | Tests are written (85+) and syntactically consistent, but have not been executed. |
+| umockdev replay recording | **☐ missing** | `tests/umockdev/rpbridge-attach.umockdev` + `.ioctl` must be captured on real hardware (instructions in that directory's README). `replay.sh` fails with exit 1 ("missing fixture") until then. |
+| Real hardware attach | **☐ not tested** | The 10-section hardware checklist in `tests/e2e.md` is written; no section has been executed against rev-B. |
+
+**Before calling the driver "validated" the open rows need to flip
+to ✓.** Anyone with a 6.18+ kernel + RPBridge rev-B hardware can
+close them.
+
 ## M12 — Post-delivery refactors (pre-upstream-RFC)
 
+- [ ] **Compile-and-test gate in CI** — GitHub Actions workflow that
+      builds the driver against a 6.18-matching kernel tree and
+      runs KUnit via `kunit.py run` in QEMU. Blocks PRs on green.
+- [ ] **umockdev recording capture** — run `umockdev-record` on real
+      hardware, commit the resulting `.umockdev` + `.ioctl` files
+      so `replay.sh` actually runs in CI.
+- [ ] **E2E hardware run** — execute `tests/e2e.md` end-to-end;
+      record sign-off block at bottom with firmware SHA + driver
+      SHA + observations.
 - [ ] **auxiliary_bus migration** — wrap each Child in
       `auxiliary_device_{init,register,delete,uninit}` per ADR-0002.
       Mechanical refactor; no behaviour change visible to userland.
