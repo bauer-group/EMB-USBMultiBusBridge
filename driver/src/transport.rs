@@ -216,6 +216,125 @@ pub trait RoundTrip {
     fn submit_oneway(&self, channel: u16, frame: &[u8]) -> Result<(), i32>;
 }
 
+/* ───── MockRoundTrip — test utility shared by every subsystem ──────── */
+
+/// A deterministic `RoundTrip` impl for kernel-side unit tests. Each
+/// test pre-programs a sequence of canned responses; submitted
+/// requests are captured verbatim so assertions can verify the
+/// builder layer emitted the right bytes.
+///
+/// Usage:
+///
+///     let mock = Arc::new(MockRoundTrip::new());
+///     mock.queue_response(Status::Ok, b"\x01\x02");  // canned payload
+///     let client = Client::new(mock.clone());
+///     client.some_op()?;
+///     let req = mock.pop_request();
+///     assert_eq!(req, vec![/* expected bytes */]);
+#[cfg(any(test, feature = "mock-transport"))]
+pub struct MockRoundTrip {
+    inner: kernel::sync::Mutex<MockInner>,
+}
+
+#[cfg(any(test, feature = "mock-transport"))]
+struct MockInner {
+    /// Queued responses, FIFO. Popped off index 0 on each round_trip.
+    pub responses:         KVec<(Status, KVec<u8>)>,
+    /// Captured requests in submission order.
+    pub captured_requests: KVec<KVec<u8>>,
+    pub oneway_captured:   KVec<KVec<u8>>,
+    /// Index into `responses` of the next slot to consume. Avoids the
+    /// O(n) cost of remove(0) while still emulating FIFO semantics.
+    pub response_cursor:   usize,
+    pub request_cursor:    usize,
+}
+
+#[cfg(any(test, feature = "mock-transport"))]
+impl MockRoundTrip {
+    pub fn new() -> Self {
+        Self {
+            inner: kernel::new_mutex!(
+                MockInner {
+                    responses:         KVec::new(),
+                    captured_requests: KVec::new(),
+                    oneway_captured:   KVec::new(),
+                    response_cursor:   0,
+                    request_cursor:    0,
+                },
+                "mock"
+            ),
+        }
+    }
+
+    pub fn queue_response(&self, status: Status, payload: &[u8]) {
+        let mut v = KVec::new();
+        v.extend_from_slice(payload, GFP_KERNEL).unwrap();
+        let mut g = self.inner.lock();
+        let _ = g.responses.push((status, v), GFP_KERNEL);
+    }
+
+    /// Pop the next captured request in FIFO order. Returns an empty
+    /// KVec if no requests are pending — tests should explicitly
+    /// check `request_count` before asserting byte content.
+    pub fn pop_request(&self) -> KVec<u8> {
+        let mut g = self.inner.lock();
+        let cursor = g.request_cursor;
+        if cursor >= g.captured_requests.len() {
+            return KVec::new();
+        }
+        g.request_cursor = cursor + 1;
+        // Clone the captured bytes rather than drain the Vec — this
+        // keeps the Vec stable so callers can inspect later.
+        let mut out = KVec::new();
+        let src = g.captured_requests.as_slice()[cursor].as_slice();
+        let _ = out.extend_from_slice(src, GFP_KERNEL);
+        out
+    }
+
+    pub fn request_count(&self) -> usize {
+        let g = self.inner.lock();
+        g.captured_requests.len() - g.request_cursor
+    }
+
+    pub fn oneway_count(&self) -> usize {
+        self.inner.lock().oneway_captured.len()
+    }
+}
+
+#[cfg(any(test, feature = "mock-transport"))]
+impl RoundTrip for kernel::sync::Arc<MockRoundTrip> {
+    fn round_trip(&self, _channel: u16, request: &[u8])
+        -> Result<(Status, KVec<u8>), i32>
+    {
+        let mut captured = KVec::new();
+        captured.extend_from_slice(request, GFP_KERNEL)
+            .map_err(|_| crate::errno::ENOMEM)?;
+        let mut g = self.inner.lock();
+        let _ = g.captured_requests.push(captured, GFP_KERNEL);
+        let cursor = g.response_cursor;
+        if cursor >= g.responses.len() {
+            return Err(crate::errno::EIO);
+        }
+        g.response_cursor = cursor + 1;
+        // Clone out — avoid moving out of the KVec which would need
+        // swap_remove gymnastics.
+        let (status, payload) = &g.responses.as_slice()[cursor];
+        let mut payload_copy = KVec::new();
+        payload_copy.extend_from_slice(payload.as_slice(), GFP_KERNEL)
+            .map_err(|_| crate::errno::ENOMEM)?;
+        Ok((*status, payload_copy))
+    }
+
+    fn submit_oneway(&self, _channel: u16, frame: &[u8]) -> Result<(), i32> {
+        let mut captured = KVec::new();
+        captured.extend_from_slice(frame, GFP_KERNEL)
+            .map_err(|_| crate::errno::ENOMEM)?;
+        let mut g = self.inner.lock();
+        let _ = g.oneway_captured.push(captured, GFP_KERNEL);
+        Ok(())
+    }
+}
+
 /* ───── Tests ──────────────────────────────────────────────────────── */
 
 #[cfg(test)]
@@ -232,6 +351,14 @@ mod tests {
     fn sequencer_wraps() {
         let mut s = Sequencer::new();
         for i in 0u16..=u16::MAX { assert_eq!(s.take(), i); }
+        assert_eq!(s.take(), 0);
+    }
+
+    #[test]
+    fn sequencer_reset_returns_to_zero() {
+        let mut s = Sequencer::new();
+        s.take(); s.take(); s.take();
+        s.reset();
         assert_eq!(s.take(), 0);
     }
 
@@ -293,5 +420,35 @@ mod tests {
         t.cancel(a);
         t.reap_dead(CHAN_CONTROL);
         assert_eq!(t.in_use(), 1);
+    }
+
+    #[test]
+    fn take_already_taken_returns_enoent() {
+        let mut t = CompletionTable::new();
+        let idx = t.allocate(CHAN_CONTROL, 5).unwrap();
+        t.fulfill(CHAN_CONTROL, 5, Status::Ok, kv(b"x")).unwrap();
+        t.take_result(idx).unwrap();
+        assert!(t.take_result(idx).is_err());
+    }
+
+    #[test]
+    fn cancel_then_take_returns_ecanceled() {
+        let mut t = CompletionTable::new();
+        let idx = t.allocate(CHAN_CONTROL, 7).unwrap();
+        t.cancel(idx);
+        assert_eq!(
+            t.take_result(idx).unwrap_err(),
+            crate::errno::ECANCELED,
+        );
+    }
+
+    #[test]
+    fn mismatched_channel_does_not_fulfill() {
+        let mut t = CompletionTable::new();
+        let idx = t.allocate(CHAN_CONTROL, 42).unwrap();
+        // Same seq on a different channel must not land on our slot.
+        assert!(t.fulfill(99, 42, Status::Ok, kv(b"x")).is_err());
+        // Original slot still pending.
+        assert_eq!(t.take_result(idx).unwrap_err(), crate::errno::EAGAIN);
     }
 }
