@@ -237,63 +237,100 @@ impl<T: RoundTrip + ?Sized> Client<T> {
     }
 }
 
-/* ═════ Layer 3 — auxiliary_device adapter ════════════════════════ */
+/* ═════ Layer 3 — gpio_chip kernel integration ═══════════════════ */
 
-/// Per-child descriptor captured at `auxiliary_device_register()`
-/// time. Held under Arc so it can survive across kernel callbacks.
-pub(crate) struct GpioChild {
-    #[allow(dead_code)]
+use crate::ffi;
+use crate::rpbp::op::gpio as go;
+
+/// Backend the C trampolines call back into. Holds the Client + the
+/// authoritative pin whitelist discovered at probe time.
+struct GpioBackend {
     client: Client<RpbridgeState>,
-    /// Pin whitelist discovered at probe time from a LIST round-trip.
-    /// Indices into this vec are the gpiochip's logical line numbers;
-    /// the firmware understands the raw RP2350 GPIO numbers.
-    #[allow(dead_code)]
     pins:   Vec<u8>,
-    /// Logical instance idx — matches BusCaps.idx for disambiguation
-    /// when auxiliary_bus assigns multiple children of the same class.
+}
+
+impl ffi::gpio::GpioBackend for GpioBackend {
+    fn get(&self, line: u32) -> i32 {
+        let Some(&pin) = self.pins.as_slice().get(line as usize) else {
+            return -crate::errno::ENODEV;
+        };
+        match self.client.get(pin) {
+            Ok(v)   => if v { 1 } else { 0 },
+            Err(_)  => -crate::errno::EIO,
+        }
+    }
+    fn set(&self, line: u32, value: bool) {
+        let Some(&pin) = self.pins.as_slice().get(line as usize) else { return; };
+        let _ = self.client.set(pin, value);
+    }
+    fn direction_input(&self, line: u32) -> i32 {
+        let Some(&pin) = self.pins.as_slice().get(line as usize) else {
+            return -crate::errno::ENODEV;
+        };
+        match self.client.configure(pin, go::DIR_INPUT, go::PULL_NONE) {
+            Ok(())  => 0,
+            Err(e)  => -e,
+        }
+    }
+    fn direction_output(&self, line: u32, value: bool) -> i32 {
+        let Some(&pin) = self.pins.as_slice().get(line as usize) else {
+            return -crate::errno::ENODEV;
+        };
+        if let Err(e) = self.client.configure(pin, go::DIR_OUTPUT, go::PULL_NONE) {
+            return -e;
+        }
+        if let Err(e) = self.client.set(pin, value) {
+            return -e;
+        }
+        0
+    }
+    fn request(&self, _line: u32) -> i32 {
+        /* Pin-broker lives on the firmware side; any conflict comes
+         * back through configure() as EBUSY. Nothing to do here. */
+        0
+    }
+    fn release(&self, _line: u32) { /* as above */ }
+}
+
+/// Registered GPIO subsystem child. Drop unregisters the chip and
+/// reclaims the backend.
+pub(crate) struct GpioChild {
+    _handle: ffi::gpio::ChipHandle,
     #[allow(dead_code)]
-    idx:    u16,
+    idx:     u16,
 }
 
 impl GpioChild {
-    /// Called from the core driver's `spawn_children` pass once per
-    /// bus entry advertised in the capability map. The caller is
-    /// expected to wrap the returned child in `auxiliary_device` and
-    /// register it with `auxiliary_device_register()`.
     pub(crate) fn probe(
         state: Arc<RpbridgeState>, bus: &BusCaps,
     ) -> Result<Self> {
-        let client = Client::new(state);
-        // Kick off a LIST immediately: gives us the authoritative pin
-        // set the firmware exposes right now. Fall back to the
-        // capability map's `pins` array if the round-trip fails
-        // (e.g. the device is still in HELLO — probe ordering matters).
+        let client = Client::new(state.clone());
+        // Kick off a LIST: gives us the authoritative pin set. Fall
+        // back to the capability map's `pins` array if the round-trip
+        // fails (e.g. the device is mid-handshake).
         let pins = client.list().unwrap_or_else(|_| {
             let mut v = Vec::new();
             for &p in bus.pins.iter() { let _ = v.push(p, GFP_KERNEL); }
             v
         });
-        pr_info!("rpbridge-gpio.{}: {} pin(s) discovered\n",
-                 bus.idx, pins.len());
+        let ngpio = pins.len() as u16;
+        pr_info!("rpbridge-gpio.{}: {} line(s)\n", bus.idx, ngpio);
 
-        // TODO §R4L-GPIO-BINDINGS:
-        //
-        //   Once kernel::gpio::Chip is wired up in the target kernel
-        //   (6.14+ has an early version in drivers/gpio/rust/),
-        //   register a Chip whose vtable is:
-        //
-        //     get:           |pin| client.get(pins[pin as usize])
-        //     set:           |pin, val| client.set(pins[pin as usize], val)
-        //     direction_in:  |pin| client.configure(pins[i], DIR_INPUT, PULL_NONE)
-        //     direction_out: |pin, val| { configure + set }
-        //
-        //   IRQ support needs kernel::gpio::IrqChip (nested irq_chip).
-        //   Its request_resources / release_resources callbacks call
-        //   client.watch(pin, edges) / client.unwatch(pin). The event-
-        //   channel pump in core_driver.rs dispatches parsed EdgeEvent
-        //   payloads to handle_nested_irq(virq) for this chip.
+        // Label is a static null-terminated string the kernel keeps
+        // a borrow of; a format-derived string would need different
+        // storage. For M11 we register both instances under the same
+        // label — the .idx field disambiguates internally.
+        let label = c"rpbridge-gpio";
 
-        Ok(GpioChild { client, pins, idx: bus.idx })
+        let parent = crate::ffi::auxiliary::parent_device(
+            &*core::ops::Deref::deref(&state)
+        ).map_err(|e| kernel::error::Error::from_errno(e))?;
+
+        let backend = GpioBackend { client, pins };
+        let handle = ffi::gpio::ChipHandle::register(parent, label, ngpio, backend)
+            .map_err(|e| kernel::error::Error::from_errno(e))?;
+
+        Ok(GpioChild { _handle: handle, idx: bus.idx })
     }
 }
 
