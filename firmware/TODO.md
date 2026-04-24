@@ -206,73 +206,78 @@ authoritative spec section.
       on the live device. M8b — needs the SPI MOSI↔MISO jumper + a
       defined pass/fail bitmask format.
 
-## M9 — Driver-priority mode (dual USB configuration)
+## M9 — Driver-optional coexistence (single configuration)
 
-Architecture captured in [ADR-0004](../docs/adr/0004-driver-priority-mode.md).
-Endpoint / configuration budget tracked in
-[`docs/firmware/resource-budget.md`](../docs/firmware/resource-budget.md).
+Architecture captured in
+[ADR-0005](../docs/adr/0005-driver-optional-coexistence.md),
+superseding the dual-configuration plan in
+[ADR-0004](../docs/adr/0004-driver-priority-mode.md).
 
-**Goal:** when the `rpbridge` Linux kernel driver is loaded, the
-device re-enumerates to a driver-native USB configuration (vendor-
-only interfaces, no CDC-ACMs). When the driver is not loaded, the
-device stays in the Compat configuration and every inbox USB class
-driver binds normally.
+**New direction:** one USB configuration, always. 4× CDC-ACM +
+2× vendor interfaces are always enumerated. The Linux driver is
+strictly **additive** — it binds to the vendor interface and
+spawns `auxiliary_bus` children for GPIO / I²C / SPI / PWM / ADC
+(things CDC cannot express), while CDCs keep handling UART and
+`gs_usb` keeps handling CAN. No `SET_CONFIGURATION` hop at driver
+load, no dropped file handles, no Windows "device install"
+notification storm.
 
-Depends on M2 (I²C) + M3 (SPI/GPIO/PWM/ADC) + M5 (CAN) having
-landed their RPBP stream-channel definitions — we only know which
-channels to carry over the vendor pipe once the subsystems are up.
+### M9a — capability-map `access` tagging
 
-### M9a — descriptor infrastructure
+- [x] ADR-0005 documents the new model. The firmware USB descriptor
+      set already ships the final shape (4 CDC + 2 vendor always
+      enumerated); no descriptor work needed for M9a.
+- [x] Capability map gains a top-level `access` field — a 7-entry
+      map `{ uart: "cdc", i2c / spi / gpio / pwm / adc / can:
+      "vendor" }`. Hosts route subsystem requests to the right
+      endpoint (CDC vs vendor pipe) without guessing.
+- [ ] `docs/protocol/capabilities.md` schema updated to include the
+      `access` key. (Doc task — reader-visible in the emitter
+      since M9a.)
 
-- [ ] Add `bNumConfigurations = 2` to `desc_device` and a second
-      configuration descriptor block in `usb_descriptors.c`.
-- [ ] Add `iConfiguration` strings ("Compat", "Native").
-- [ ] `tud_descriptor_configuration_cb(index)` returns the right
-      descriptor array for the requested index.
-- [ ] Verify `tud_cdc_n_ready()` degrades cleanly in Config 2
-      (CDC FIFOs are never enumerated, their handlers are no-ops).
+### M9b — optional UART driver claim (opt-in)
 
-### M9b — per-config behaviour
-
-- [ ] Emit an `EVENT` on channel 1 when the active configuration
-      changes (host-side audit log).
-- [ ] `cdc_glue.c` early-exits cheaply when `tud_ready()` returns
-      false — no wasted cycles in driver-native mode.
-- [ ] RPBP capability map reports `"mode": "compat" | "native"` and
-      the mapping between stream-channel numbers and logical
-      functions (UART1 RS232, UART1 RS485, UART1 TTL, UART2 TTL,
-      I²C #0, I²C #1, SPI #0, SPI #1, GPIO bank #0, PWM chip #0,
-      ADC #0).
+- [ ] New `SYS UART_CLAIM` / `SYS UART_RELEASE` opcodes
+      (`0x09` / `0x0A`) — per-UART-instance boolean latch. While
+      claimed, `cdc_glue.c` silently drains host writes to the
+      matching CDC and routes bytes via RPBP stream channels
+      instead. Released automatically on device disconnect.
+- [ ] `cdc_glue.c`: honours the claim flag in its arbiter (one
+      extra branch — cheap).
+- [ ] CDC-to-UART TX path: when claimed, writes coming from a CDC
+      FIFO are discarded rather than pushed to UART0 HW. RX bytes
+      from UART0 HW are NOT forwarded to the CDC (host-side
+      `/dev/rpbridge-uart1-*` goes dark for the duration of the
+      claim).
+- [ ] Ship only when the Rust driver gains a use-case that exceeds
+      what termios-over-CDC already delivers. Not a blocker for
+      M9a or the driver's initial release.
 
 ### M9c — kernel-driver wiring
 
-Implemented in `driver/src/core_driver.rs`:
+Tracked in `driver/TODO.md`; summarised here for cross-reference:
 
-- [ ] On `probe()` detect we are on Config 1 (CDC+Vendor) and issue
-      `usb_driver_set_configuration(dev, 2)` to hop to Native.
-- [ ] Handle re-probe on Config 2 (vendor-only) idempotently.
-- [ ] On `disconnect()` let the host-side `usb_reset_configuration()`
-      restore Config 1 automatically at next `open()`.
-- [ ] Gate aux children on the subsystems advertised in the
-      capability map.
+- [ ] `rpbridge.ko` binds the vendor interface by VID/PID +
+      InterfaceClass. No `SET_CONFIGURATION` at probe time.
+- [ ] Walks the capability map, gates each aux child on the
+      subsystem's presence.
+- [ ] Spawns aux children: `gpiochip-rpbridge`,
+      `i2c-adapter-rpbridge`, `spi-master-rpbridge`,
+      `pwmchip-rpbridge`, `iio-rpbridge`.
+- [ ] Does NOT spawn a tty driver in the first release — CDCs
+      already provide `/dev/rpbridge-uart1-*` with proper termios
+      via `usbser`. Optional UART claim (via M9b) is a future
+      feature.
+- [ ] On `disconnect()`: detach aux children cleanly; CDCs are
+      handled by `usbser` independently (single-config means no
+      coordination needed).
 
-### M9d — native tty layer
+### M9d — integration tests
 
-- [ ] `tty_driver` that backs `/dev/ttyRPB-rs232`,
-      `/dev/ttyRPB-rs485`, `/dev/ttyRPB-ttl`, `/dev/ttyRPB-pio`
-      over RPBP stream channels. Full termios support; the driver
-      forwards SetLineCoding-equivalent RPBP commands to the
-      firmware.
-- [ ] udev rules list both sets of symlinks — `rpbridge-uart1-*`
-      (Config 1) and `ttyRPB-*` (Config 2) — so scripts that were
-      written against Compat mode keep working after the driver
-      loads.
-
-### M9e — integration tests
-
-- [ ] umockdev recording of the Compat → Native config switch,
-      replayable in CI.
-- [ ] KUnit test that asserts re-binding lands on Config 2.
-- [ ] End-to-end test on real hardware: unplug, plug with driver
-      loaded, observe `/dev/ttyRPB*` appearing within 1 s; unload
-      driver, replug, observe `/dev/rpbridge-uart1-*` appearing.
+- [ ] umockdev recording of driver load + aux-child creation on a
+      captured vendor-interface enumeration.
+- [ ] KUnit: driver `probe()` spawns the right number of aux
+      children for a synthesised capability map.
+- [ ] End-to-end on real hardware: plug device, load driver,
+      observe `/dev/i2c-N`, `/dev/spidev*`, `/dev/gpiochip*` +
+      `/dev/rpbridge-uart1-*` all present simultaneously.

@@ -109,10 +109,11 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
      *   max_reassembled                 (1)
      *   features                        (1)
      *   buses                           (1)
+     *   access                          (1)   — ADR-0005
      *   ota                             (1)
-     *                           total = 11
+     *                           total = 12
      */
-    cbor_writer_map(&w, 11);
+    cbor_writer_map(&w, 12);
     emit_identity_common(&w);
 
     /* mtu: { out: 64, in: 64 }  — USB FS bulk packet size */
@@ -333,6 +334,24 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
         cbor_writer_kv_text(&w, "transport", "gs_usb");
         cbor_writer_kv_uint(&w, "max_bitrate_bps", 1000000);
     }
+
+    /*
+     * access — where each subsystem is reachable from the host
+     * (ADR-0005). Hosts use this to route requests to the right
+     * endpoint without guessing:
+     *   "cdc"    — inbox usbser-bound virtual COM port
+     *   "vendor" — RPBP over our vendor interface (driver or libusb)
+     *   "cdc+vendor" — reserved for future dual-reachable subsystems
+     */
+    cbor_writer_text_cstr(&w, "access");
+    cbor_writer_map(&w, 7);
+    cbor_writer_kv_text(&w, "uart", "cdc");
+    cbor_writer_kv_text(&w, "i2c",  "vendor");
+    cbor_writer_kv_text(&w, "spi",  "vendor");
+    cbor_writer_kv_text(&w, "gpio", "vendor");
+    cbor_writer_kv_text(&w, "pwm",  "vendor");
+    cbor_writer_kv_text(&w, "adc",  "vendor");
+    cbor_writer_kv_text(&w, "can",  "vendor");
 
     /* ota descriptor */
     cbor_writer_text_cstr(&w, "ota");

@@ -1,6 +1,11 @@
 # ADR-0004 — Driver-priority mode via dual USB configuration
 
-**Status:** Accepted — 2026-04-23
+**Status:** Superseded by [ADR-0005](0005-driver-optional-coexistence.md) on 2026-04-24.
+The M4e DTR auto-switch proved that CDCs and a driver-native UART
+path can share UART0 without re-enumeration; a single USB
+configuration is sufficient.
+
+**Original status:** Accepted — 2026-04-23
 
 ## Context
 
