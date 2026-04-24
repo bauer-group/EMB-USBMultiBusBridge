@@ -30,9 +30,17 @@ static struct {
     uint8_t  brightness_pct; /* 0..100 */
 } g_led_override;
 
-bool cmd_sys_led_override_active(void)
+bool cmd_sys_get_led_override(struct cmd_sys_led_override *out)
 {
-    return g_led_override.active;
+    if (!g_led_override.active) return false;
+    if (out != NULL) {
+        out->r              = g_led_override.r;
+        out->g              = g_led_override.g;
+        out->b              = g_led_override.b;
+        out->mode           = g_led_override.mode;
+        out->brightness_pct = g_led_override.brightness_pct;
+    }
+    return true;
 }
 
 int cmd_sys_set_led(uint8_t r, uint8_t g, uint8_t b,

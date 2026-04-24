@@ -49,13 +49,29 @@
 #define RPBRIDGE_WATCHDOG_TIMEOUT_MS 3000u
 
 /* ──────────────────────────────────────────────────────────────────────
- * Status LED (PWM-driven)
+ * Status LED (PWM-driven, prioritised state scheduler)
  *
- * Common-anode RGB on GP22/23/24. Because the anode is tied HIGH and
- * the GPIO sinks current, a LOW output turns the channel ON. The PWM
- * driver runs channels inverted so duty_q16 maps the way a user
- * expects: 0 = off, 65535 = full brightness. Frequency = 1 kHz
- * (flicker-free, non-audible).
+ * Hardware: common-anode RGB on GP22/23/24. Anode tied to +3V3, GPIO
+ * sinks current — LOW = channel ON. The PWM driver runs channels
+ * inverted (GPIO_OVERRIDE_INVERT) so duty_q16 maps the intuitive way:
+ * 0 = off, 65535 = full brightness. PWM frequency = 1 kHz.
+ *
+ * Scheduler: every ~10 ms led_tick() picks a LED "scene" by priority.
+ * Highest priority wins; lower-priority scenes are suppressed until
+ * the higher one clears. This gives the host a single visual channel
+ * without the risk of a chatty subsystem flickering away an important
+ * fault indicator.
+ *
+ *   Priority (high → low)
+ *   ─────────────────────
+ *     HOST_OVERRIDE      ← SYS SET_LED (mode 1..4, chosen R/G/B/bright)
+ *     WATCHDOG_BOOT      ← first 10 s after a watchdog-caused reboot
+ *                          (red double-blink — "something misbehaved")
+ *     USB_DETACHED       ← blue breathing  — TinyUSB not mounted yet
+ *     IDLE               ← green breathing — fallback, everything fine
+ *
+ * Each scene renders a Q0.16 triple and hands it to led_apply_rgb(),
+ * which applies the perceptual R/G/B calibration.
  * ────────────────────────────────────────────────────────────────────── */
 
 #ifndef RPBRIDGE_LED_R_PIN
@@ -68,7 +84,8 @@
 #define RPBRIDGE_LED_B_PIN 24
 #endif
 
-#define RPBRIDGE_LED_PWM_HZ  1000u   /* 1 kHz — no flicker, no audible whine */
+#define RPBRIDGE_LED_PWM_HZ         1000u    /* 1 kHz — no flicker, no whine */
+#define RPBRIDGE_WATCHDOG_HINT_MS   10000u   /* watchdog scene timeout       */
 
 /*
  * Per-channel max brightness. Different forward voltages across R/G/B
@@ -80,32 +97,29 @@
 #define RPBRIDGE_LED_CAL_G   ((uint16_t)(0xFFFFu * 100u / 100u))
 #define RPBRIDGE_LED_CAL_B   ((uint16_t)(0xFFFFu * 60u / 100u))
 
+/* Latched at boot so the watchdog scene can be shown for a bounded
+ * window without re-reading the status flag every tick. */
+static bool g_boot_from_watchdog;
+
 static int led_init(void)
 {
     /* Invert-polarity is the trick that makes duty_q16 intuitive: when
      * the PWM register counts below the threshold the GPIO is HIGH
      * (common-anode = LED off); inverting the output means the same
      * threshold turns the LED ON. duty=0 → LED off, duty=full → ON. */
-    struct {
-        uint8_t pin;
-        uint16_t cal;
-    } ch[] = {
-        { RPBRIDGE_LED_R_PIN, RPBRIDGE_LED_CAL_R },
-        { RPBRIDGE_LED_G_PIN, RPBRIDGE_LED_CAL_G },
-        { RPBRIDGE_LED_B_PIN, RPBRIDGE_LED_CAL_B },
+    const uint8_t pins[] = {
+        RPBRIDGE_LED_R_PIN, RPBRIDGE_LED_G_PIN, RPBRIDGE_LED_B_PIN,
     };
-    for (size_t i = 0; i < sizeof(ch) / sizeof(ch[0]); ++i) {
-        int rc = pwm_hw_configure_led(ch[i].pin, RPBRIDGE_LED_PWM_HZ, 0u);
+    for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); ++i) {
+        int rc = pwm_hw_configure_led(pins[i], RPBRIDGE_LED_PWM_HZ, 0u);
         if (rc < 0) return -1;
-        /* Invert at the GPIO override so "on" = duty>0. */
-        gpio_set_outover(ch[i].pin, GPIO_OVERRIDE_INVERT);
-        (void)ch[i].cal;   /* calibration is applied at apply() time */
+        gpio_set_outover(pins[i], GPIO_OVERRIDE_INVERT);
     }
     return 0;
 }
 
-/* Apply a colour triple scaled by per-channel calibration. Inputs are
- * Q0.16 per channel (0..65535). */
+/* Apply a Q0.16 colour triple, scaled by the per-channel perceptual
+ * calibration. Inputs 0..65535 map intuitively to off..full-white. */
 static void led_apply_rgb(uint16_t r, uint16_t g, uint16_t b)
 {
     uint16_t rc = (uint16_t)(((uint32_t)r * RPBRIDGE_LED_CAL_R) >> 16);
@@ -116,34 +130,116 @@ static void led_apply_rgb(uint16_t r, uint16_t g, uint16_t b)
     pwm_hw_set_duty(RPBRIDGE_LED_B_PIN, bc);
 }
 
+/* ───── Scene renderers ──────────────────────────────────────────────── */
+
 /*
- * LED state machine tick. Called every ~10 ms from the main loop.
- * If a host-issued SET_LED override is active, that wins; otherwise
- * we run the default heartbeat — a smooth green sinusoid at 1 Hz
- * instead of the old binary blink, now that PWM is available.
+ * Expand an 8-bit channel byte to Q0.16 and scale by a 0..100 %
+ * brightness. 8-bit white → 16-bit white (255 * 0x101 = 0xFFFF).
  */
+static uint16_t expand_u8_q16(uint8_t v, uint8_t brightness_pct)
+{
+    uint32_t q16 = (uint32_t)v * 0x101u;                    /* 0..65535 */
+    q16 = (q16 * brightness_pct) / 100u;
+    return (q16 > 0xFFFFu) ? 0xFFFFu : (uint16_t)q16;
+}
+
+/* Triangular envelope: 0 → full → 0 over `period_ms` at `phase_ms`. */
+static uint16_t triangle_q16(uint32_t phase_ms, uint32_t period_ms)
+{
+    uint32_t p    = phase_ms % period_ms;
+    uint32_t half = period_ms / 2u;
+    uint32_t v    = (p < half) ? (p * 0xFFFFu / half)
+                               : ((period_ms - p) * 0xFFFFu / half);
+    return (v > 0xFFFFu) ? 0xFFFFu : (uint16_t)v;
+}
+
+/* Render the SET_LED override per its mode. */
+static void render_host_override(const struct cmd_sys_led_override *ovr,
+                                 uint32_t phase_ms)
+{
+    uint16_t r = expand_u8_q16(ovr->r, ovr->brightness_pct);
+    uint16_t g = expand_u8_q16(ovr->g, ovr->brightness_pct);
+    uint16_t b = expand_u8_q16(ovr->b, ovr->brightness_pct);
+
+    switch (ovr->mode) {
+    case 1: /* solid */
+        led_apply_rgb(r, g, b);
+        return;
+    case 2: /* blink 1 Hz — on 500 ms / off 500 ms */
+        if ((phase_ms % 1000u) < 500u) led_apply_rgb(r, g, b);
+        else                            led_apply_rgb(0, 0, 0);
+        return;
+    case 3: { /* pulse 1 Hz — triangular breathing */
+        uint32_t v = triangle_q16(phase_ms, 1000u);
+        led_apply_rgb((uint16_t)((uint32_t)r * v >> 16),
+                      (uint16_t)((uint32_t)g * v >> 16),
+                      (uint16_t)((uint32_t)b * v >> 16));
+        return;
+    }
+    case 4: /* fast blink 4 Hz — on 125 ms / off 125 ms */
+        if ((phase_ms % 250u) < 125u) led_apply_rgb(r, g, b);
+        else                           led_apply_rgb(0, 0, 0);
+        return;
+    default:
+        led_apply_rgb(0, 0, 0);
+        return;
+    }
+}
+
+/* Watchdog-boot scene: red double-blink at 2 Hz — unmistakable on the
+ * bench that the previous boot was abnormal. */
+static void render_watchdog_boot(uint32_t phase_ms)
+{
+    uint32_t p = phase_ms % 1000u;         /* 2 Hz outer cadence */
+    bool on = (p < 100u) || (p >= 200u && p < 300u);
+    led_apply_rgb(on ? 0xFFFFu : 0u, 0u, 0u);
+}
+
+/* USB-detached scene: blue breathing 1 Hz. */
+static void render_usb_detached(uint32_t phase_ms)
+{
+    led_apply_rgb(0u, 0u, triangle_q16(phase_ms, 1000u));
+}
+
+/* Idle scene: green breathing 1 Hz. */
+static void render_idle(uint32_t phase_ms)
+{
+    led_apply_rgb(0u, triangle_q16(phase_ms, 1000u), 0u);
+}
+
+/* ───── Top-level LED tick ───────────────────────────────────────────── */
+
 static void led_tick(void)
 {
-    static uint32_t phase_ms = 0;
-    phase_ms += 10;
-    if (phase_ms >= 10000) phase_ms = 0;
+    /* Use absolute boot time as phase so scene transitions don't reset
+     * the animation — a transition from "USB-detached" to "idle" keeps
+     * the breathing in phase, which looks smoother than restarting. */
+    uint32_t phase_ms = (uint32_t)(time_us_64() / 1000u);
 
-    if (cmd_sys_led_override_active()) {
-        /* Placeholder: magenta pulse at 2 Hz so "override active" is
-         * visually obvious on the bench. Once cmd_sys exposes the
-         * full override state (r/g/b/mode) we render it here. */
-        uint32_t p = phase_ms % 500u;
-        uint16_t v = (p < 250u) ? (uint16_t)(p * 262u)
-                                : (uint16_t)((500u - p) * 262u);
-        led_apply_rgb(v, 0u, v);
+    /* 1. Host SET_LED override — unconditional highest priority. */
+    struct cmd_sys_led_override ovr;
+    if (cmd_sys_get_led_override(&ovr)) {
+        render_host_override(&ovr, phase_ms);
         return;
     }
 
-    /* Default: green breathing at 1 Hz, triangular envelope. */
-    uint32_t p = phase_ms % 1000u;
-    uint16_t v = (p < 500u) ? (uint16_t)(p * 131u)
-                            : (uint16_t)((1000u - p) * 131u);
-    led_apply_rgb(0u, v, 0u);
+    /* 2. Watchdog-boot indicator — only for the first 10 s after a
+     *    recovered-from-watchdog reboot. */
+    if (g_boot_from_watchdog && phase_ms < RPBRIDGE_WATCHDOG_HINT_MS) {
+        render_watchdog_boot(phase_ms);
+        return;
+    }
+
+    /* 3. USB enumeration state. `tud_ready()` is true once the host
+     *    has sent SET_CONFIGURATION and the CDC/vendor interfaces are
+     *    usable. */
+    if (!tud_ready()) {
+        render_usb_detached(phase_ms);
+        return;
+    }
+
+    /* 4. Idle — everything fine, green heartbeat. */
+    render_idle(phase_ms);
 }
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -155,10 +251,11 @@ int main(void)
     /*
      * Boot order: report whether the previous reset was caused by the
      * watchdog (firmware hang) or something benign. The capability map
-     * exposes this later via a dedicated SYS field; for now we just
-     * log it.
+     * exposes this later via a dedicated SYS field; the LED scheduler
+     * latches this into g_boot_from_watchdog and renders a red double-
+     * blink for the first 10 s after a watchdog-triggered reboot.
      */
-    const bool boot_from_watchdog = watchdog_caused_reboot();
+    g_boot_from_watchdog = watchdog_caused_reboot();
 
     stdio_init_all();
 
@@ -203,7 +300,7 @@ int main(void)
     printf("RPBridge firmware %s (RPBP v%u.%u.%u)%s\n",
            RPBRIDGE_GIT_DESCRIBE,
            RPBP_VERSION_MAJOR, RPBP_VERSION_MINOR, RPBP_VERSION_PATCH,
-           boot_from_watchdog ? " [recovered from watchdog reset]" : "");
+           g_boot_from_watchdog ? " [recovered from watchdog reset]" : "");
 
     absolute_time_t next_led = make_timeout_time_ms(0);
 

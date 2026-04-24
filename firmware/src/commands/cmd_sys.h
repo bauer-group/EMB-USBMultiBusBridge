@@ -41,11 +41,23 @@ int cmd_sys_set_led(uint8_t r, uint8_t g, uint8_t b,
                     uint8_t mode, uint8_t brightness_pct);
 
 /*
- * Did the last SET_LED request leave an override active? The main
- * loop's heartbeat blinker checks this; when true, it stops
- * overwriting the LED and lets the override stand.
+ * Snapshot of an active SET_LED override. Mirrors the wire fields of
+ * the SET_LED opcode (see docs/protocol/subsystems/sys.md §0x05).
  */
-bool cmd_sys_led_override_active(void);
+struct cmd_sys_led_override {
+    uint8_t r;              /* colour — 0..255 at full brightness         */
+    uint8_t g;
+    uint8_t b;
+    uint8_t mode;           /* 1=solid 2=blink-1Hz 3=pulse-1Hz 4=fast-4Hz */
+    uint8_t brightness_pct; /* 0..100 global brightness                   */
+};
+
+/*
+ * Fetch the active LED override. Returns true + fills `*out` when an
+ * override is active (mode != 0), false otherwise. `out` may be NULL
+ * for a bool-only probe.
+ */
+bool cmd_sys_get_led_override(struct cmd_sys_led_override *out);
 
 #ifdef __cplusplus
 }

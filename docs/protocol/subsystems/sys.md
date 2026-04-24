@@ -185,6 +185,31 @@ state-machine colouring until the device is reset.
 otherwise. To return control to the firmware's own state machine,
 send `mode = 0` then wait ~100 ms; the firmware reclaims the LED.
 
+### Firmware default scheduler (no override)
+
+When no SET_LED override is active, the firmware drives the RGB LED
+from a small prioritised state machine. Higher priority always wins;
+lower-priority scenes are suppressed until the higher one clears.
+
+| Priority | Scene              | Pattern                                 | Trigger                                                       |
+|---------:|:-------------------|:----------------------------------------|:--------------------------------------------------------------|
+|    1 (⬆) | `HOST_OVERRIDE`    | as per SET_LED mode/colour              | mode ≠ 0 set via this opcode                                  |
+|    2     | `WATCHDOG_BOOT`    | red double-blink @ 2 Hz, ≤ 10 s         | `watchdog_caused_reboot()` latched at boot                    |
+|    3     | `USB_DETACHED`     | blue breathing @ 1 Hz (triangle)        | `tud_ready()` = false (not enumerated / not configured)       |
+|    4 (⬇) | `IDLE`             | green breathing @ 1 Hz (triangle)       | fallback — everything nominal                                 |
+
+The animation phase is derived from absolute boot time
+(`time_us_64()`), so a scene transition (e.g. `USB_DETACHED` →
+`IDLE` on enumeration) keeps the breathing curve in-phase rather
+than restarting it — visually smoother.
+
+Per-channel perceptual calibration (~30 % R / 100 % G / 60 % B) is
+applied by the firmware so `(R=G=B=0xFF)` at 100 % brightness
+renders as visually balanced white on the rev-B hardware (discrete
+common-anode RGB with per-colour current-limit resistors). Hosts
+should therefore send colour as their natural intent and not
+pre-compensate.
+
 ## `0x06 — SELFTEST`
 
 Run an internal suite of loopback and sanity checks.
