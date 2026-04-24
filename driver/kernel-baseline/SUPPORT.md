@@ -1,11 +1,11 @@
 # Kernel support matrix
 
-| Kernel version | Status        | Notes                                          |
-|----------------|---------------|------------------------------------------------|
-| 6.13 LTS       | **required**  | Minimum baseline — Rust-for-Linux USB + aux_bus stable enough for this module. |
-| 6.14           | tested        | Primary CI target.                             |
-| 6.15+          | expected OK   | Tracked via the `nightly-mainline` CI workflow; breakages open an automatic issue. |
-| < 6.13         | unsupported   | Either lacks `CONFIG_RUST=y` in distro builds or has unstable bindings we depend on. |
+| Kernel version | Status | Notes |
+| --- | --- | --- |
+| 6.18 | **required** | Minimum baseline — `kernel::usb::Driver` (Daniel Almeida's Rust USB abstractions, Collabora) is available here. Earlier kernels lack the USB driver trait this module's outer shell uses, even when `CONFIG_RUST=y` is on. |
+| 6.19+ | expected OK | Tracked via the `nightly-mainline` CI workflow; breakages open an automatic issue. |
+| 6.13..6.17 | unsupported | Rust USB abstractions not yet upstream. The FFI layer (ADR-0007) still needs `kernel::usb::Driver` as its outer shell, so older kernels are gated out at build time. |
+| < 6.13 | unsupported | Either lacks `CONFIG_RUST=y` in distro builds or has unstable bindings we depend on. |
 
 ## Required kconfig
 
@@ -24,15 +24,18 @@ CONFIG_IIO=y
 
 ## Distributions shipping compatible kernels
 
-* **Ubuntu 25.04+** (noble HWE path) — kernel 6.14 with Rust enabled.
-* **Fedora 42+**.
-* **Arch Linux** — rolling, current mainline.
-* **Debian 13 (trixie)** once it ships 6.13 LTS in its backports channel.
+Kernel 6.18 was released in early 2026; distribution availability
+(April 2026):
 
-Older distributions (Ubuntu 22.04, Debian 12, RHEL 9) are **not
-supported targets** for this driver. Consider upgrading the kernel via
-the distribution's HWE / kernel-ml channel, or run the driver on a
-newer workstation.
+* **Arch Linux** — rolling, current mainline, shipping 6.18+.
+* **Fedora 42+** — ships 6.18 via kernel updates.
+* **Ubuntu 26.04 LTS** — ships with 6.18 as its HWE default.
+* **Debian 13** — 6.18 via backports.
+
+Older distributions (Ubuntu 25.04, Fedora 41, Debian 12, RHEL 9)
+are **not supported targets** for this driver. Consider upgrading
+the kernel via the distribution's HWE / kernel-ml channel, or run
+the driver on a newer workstation.
 
 ## How to check the target kernel quickly
 

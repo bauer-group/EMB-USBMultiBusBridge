@@ -33,7 +33,7 @@
 // 6. Done. The aux children talk back via RoundTrip::round_trip().
 
 use kernel::prelude::*;
-use kernel::sync::{Arc, Mutex};
+use kernel::sync::{new_mutex, Arc, Mutex};
 
 use crate::cap::Capabilities;
 use crate::ffi;
@@ -351,16 +351,26 @@ impl kernel::usb::Driver for RpbridgeDriver {
 
         let state = RpbridgeState::new()?;
 
-        // 1. Grab the raw interface pointer. kernel::usb::Interface
-        //    doesn't expose a raw accessor in 6.18; we rely on the
-        //    conventional repr-transparent layout documented in R4L's
-        //    usb.rs. If this changes upstream, the line below is the
-        //    only place we need to adapt.
+        // 1. Grab the raw interface pointer.
         //
-        // SAFETY: kernel::usb::Interface is #[repr(transparent)]
-        // around *mut usb_interface in R4L 6.18.
+        // In R4L 6.18 `kernel::usb::Interface` is a
+        // `#[repr(transparent)]` wrapper around
+        // `Opaque<bindings::usb_interface>`, which is itself
+        // `repr(transparent)` around `UnsafeCell<MaybeUninit<T>>`.
+        // The composition is ABI-identical to `*mut usb_interface`,
+        // so a pointer cast is sound and avoids the `transmute`
+        // footgun of silently changing its meaning if the layout
+        // evolves. The assumption lives in one place; any R4L
+        // upstream change that breaks it breaks this cast at the
+        // call site and nowhere else.
+        //
+        // SAFETY: the pointer cast relies only on the documented
+        // transparent representation above; no bytes are
+        // reinterpreted.
         let raw_intf: *mut ffi::bindings::usb_interface =
-            unsafe { core::mem::transmute(intf) };
+            intf as *const kernel::usb::Interface
+                 as *const ffi::bindings::usb_interface
+                 as *mut _;
         let intf_wrapper = unsafe { ffi::usb::Interface::from_raw(raw_intf) };
 
         // 2. Locate the RPBP bulk-IN / bulk-OUT pair.
