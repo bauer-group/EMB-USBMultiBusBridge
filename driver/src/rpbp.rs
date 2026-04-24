@@ -226,10 +226,12 @@ pub mod op {
         pub const FLAG_INVERT: u8 = 1 << 0;
     }
     pub mod adc {
-        pub const READ:       u8 = 0x00;
-        pub const READ_MANY:  u8 = 0x01;
-        pub const GET_REF:    u8 = 0x02;
-        pub const TEMP_READ:  u8 = 0x03;
+        pub const READ:         u8 = 0x00;
+        pub const READ_MANY:    u8 = 0x01;
+        pub const GET_REF:      u8 = 0x02;
+        pub const TEMP_READ:    u8 = 0x03;
+        pub const STREAM_START: u8 = 0x04;
+        pub const STREAM_STOP:  u8 = 0x05;
     }
     pub mod uart {
         pub const SET_PHY: u8 = 0x00;
