@@ -287,27 +287,56 @@ notification storm.
 
 Tracked in `driver/TODO.md`; summarised here for cross-reference:
 
-- [ ] `rpbridge.ko` binds the vendor interface by VID/PID +
+- [x] `rpbridge.ko` binds the vendor interface by VID/PID +
       InterfaceClass. No `SET_CONFIGURATION` at probe time.
-- [ ] Walks the capability map, gates each aux child on the
-      subsystem's presence.
-- [ ] Spawns aux children: `gpiochip-rpbridge`,
-      `i2c-adapter-rpbridge`, `spi-master-rpbridge`,
-      `pwmchip-rpbridge`, `iio-rpbridge`.
-- [ ] Does NOT spawn a tty driver in the first release — CDCs
+      *(Structure in place; URB/endpoint code gated on R4L-USB
+      bindings — see `driver/TODO.md` §M10c.)*
+- [x] Walks the capability map, gates each aux child on the
+      subsystem's presence — `spawn_children()` in core_driver.rs.
+- [x] Spawns aux children: `rpbridge-gpio`, `rpbridge-i2c`,
+      `rpbridge-spi`, `rpbridge-pwm`, `rpbridge-iio`. UART and CAN
+      are skipped by design (ADR-0006).
+- [x] Does NOT spawn a tty driver in the first release — CDCs
       already provide `/dev/rpbridge-uart1-*` with proper termios
-      via `usbser`. Optional UART claim (via M9b) is a future
-      feature.
-- [ ] On `disconnect()`: detach aux children cleanly; CDCs are
-      handled by `usbser` independently (single-config means no
-      coordination needed).
+      via `usbser`. Optional UART claim (via M9b) retained as a
+      diagnostic escape hatch only.
+- [ ] **Blocked on R4L-USB-BINDINGS:** `disconnect()` calls
+      `usb_kill_anchored_urbs` + auxiliary_device_unregister for
+      each child.
 
 ### M9d — integration tests
 
-- [ ] umockdev recording of driver load + aux-child creation on a
-      captured vendor-interface enumeration.
-- [ ] KUnit: driver `probe()` spawns the right number of aux
-      children for a synthesised capability map.
-- [ ] End-to-end on real hardware: plug device, load driver,
-      observe `/dev/i2c-N`, `/dev/spidev*`, `/dev/gpiochip*` +
-      `/dev/rpbridge-uart1-*` all present simultaneously.
+- [x] umockdev recording template + replay script — see
+      `driver/tests/umockdev/`.
+- [x] KUnit scaffold: CRC-32C parity + golden-vector CRC trailer
+      agreement — see `driver/tests/kunit/`.
+- [x] End-to-end hardware checklist with 10 sections covering
+      every ADR claim — see `driver/tests/e2e.md`.
+
+## M10 — Driver-native RPBP client + gs_usb feature completion (ADR-0006)
+
+### M10a — gs_usb HW_TIMESTAMP
+
+- [x] `GS_CAN_FEATURE_HW_TIMESTAMP` advertised in
+      `gs_device_bt_const.feature` (gs_usb_glue.c).
+- [x] `gs_host_frame` carries a trailing LE u32 µs timestamp when
+      the host opts in via `GS_CAN_MODE_HW_TIMESTAMP`. Wire size
+      selector `host_frame_size()` returns 20 / 24 symmetrically.
+- [x] `GS_USB_BREQ_TIMESTAMP` IN request returns the current
+      device µs counter for host clock anchoring.
+- [x] Capability flag `"can.hw-timestamp"` in the features array.
+
+### M10b — CAN-FD (hardware-gated)
+
+- [x] Documented as a hardware gate — see
+      `docs/protocol/hardware-canfd.md`. can2040 is Classic-only;
+      FD needs external SPI CAN-FD silicon (MCP2518FD) or new
+      silicon with integrated FD core.
+- [x] `RPBRIDGE_HAVE_CANFD` compile-time gate in gs_usb_glue.c
+      hard-fails the build if enabled without an FD-capable
+      backend.
+
+### M10 driver-side
+
+See `driver/TODO.md` for the client/adapter completion state
+(M10c..M10i).
