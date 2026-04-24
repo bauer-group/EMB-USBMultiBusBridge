@@ -203,49 +203,69 @@ impl<T: RoundTrip + ?Sized> Client<T> {
     }
 }
 
-/* ═════ Layer 3 — auxiliary_device adapter ════════════════════════ */
+/* ═════ Layer 3 — spi_controller kernel integration ═════════════ */
 
-#[allow(dead_code)]
-pub(crate) struct SpiChild {
+use crate::ffi;
+
+struct SpiBackendImpl {
     client: Client<RpbridgeState>,
+}
+
+impl ffi::spi::SpiBackend for SpiBackendImpl {
+    fn transfer_message(
+        &self, cs_pin: u8, xfers: &mut [ffi::spi::SpiXfer<'_>],
+    ) -> i32 {
+        // The FFI trampoline feeds us one SpiXfer at a time (a
+        // single-element slice). Each call becomes one RPBP XFER.
+        // cs_change=true on the final xfer releases CS; otherwise
+        // the firmware holds it asserted for the next xfer.
+        for xfer in xfers.iter_mut() {
+            let tx_bytes: &[u8] = xfer.tx.unwrap_or(&[]);
+            let rx_len: u16 = xfer.rx.as_deref().map(|r| r.len() as u16)
+                .unwrap_or(xfer.len as u16);
+            // hold_cs logic at kernel level: if this xfer requests
+            // cs_change=true it means "release CS after me", so we
+            // do NOT hold CS. Otherwise hold.
+            let hold_cs = !xfer.cs_change;
+            let rx_data = match self.client.xfer(cs_pin, tx_bytes, rx_len, hold_cs) {
+                Ok(d)  => d,
+                Err(e) => return -e,
+            };
+            if let Some(dst) = xfer.rx.as_deref_mut() {
+                let n = dst.len().min(rx_data.len());
+                dst[..n].copy_from_slice(&rx_data.as_slice()[..n]);
+            }
+        }
+        0
+    }
+}
+
+pub(crate) struct SpiChild {
+    _handle: ffi::spi::ControllerHandle,
     #[allow(dead_code)]
-    idx:    u16,
+    idx:     u16,
 }
 
 impl SpiChild {
     pub(crate) fn probe(
         state: Arc<RpbridgeState>, bus: &BusCaps,
     ) -> Result<Self> {
-        let client = Client::new(state, bus.idx as u8);
-        pr_info!("rpbridge-spi.{}: probe (client ready)\n", bus.idx);
+        let client = Client::new(state.clone(), bus.idx as u8);
+        pr_info!("rpbridge-spi.{}: probe\n", bus.idx);
 
-        // TODO §R4L-SPI-BINDINGS:
-        //
-        //   Once kernel::spi::Controller lands:
-        //
-        //     fn transfer_one_message(&self, msg: &SpiMessage) -> Result<()> {
-        //         let xfers: Vec<(&[u8], u16, bool)> = msg.xfers()
-        //             .map(|x| (x.tx_buf(), x.rx_len() as u16, x.cs_change())).collect();
-        //         let cs_pin = msg.chip_select_gpio();
-        //         let replies = self.client.xfer_message(cs_pin, &xfers)?;
-        //         for (xfer, rx) in msg.xfers().zip(replies) {
-        //             if let Some(dst) = xfer.rx_buf_mut() {
-        //                 dst.copy_from_slice(&rx);
-        //             }
-        //         }
-        //         msg.complete(0);
-        //         Ok(())
-        //     }
-        //
-        //     .num_chipselect = bus.pins.len()
-        //     .mode_bits      = SPI_CPOL | SPI_CPHA
-        //     .bits_per_word_mask = BIT(8)
+        let parent = crate::ffi::auxiliary::parent_device(
+            &*core::ops::Deref::deref(&state)
+        ).map_err(|e| kernel::error::Error::from_errno(e))?;
 
-        Ok(SpiChild { client, idx: bus.idx })
+        // num_chipselect = number of CS pins the firmware advertises.
+        // SPI0 on rev-B exposes 1 CS; SPI1 exposes 3.
+        let num_cs = if bus.idx == 0 { 1u16 } else { 3u16 };
+
+        let backend = SpiBackendImpl { client };
+        let handle = ffi::spi::ControllerHandle::register(parent, num_cs, backend)
+            .map_err(|e| kernel::error::Error::from_errno(e))?;
+        Ok(SpiChild { _handle: handle, idx: bus.idx })
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn client(&self) -> &Client<RpbridgeState> { &self.client }
 }
 
 /* ═════ Tests ═════════════════════════════════════════════════════ */
