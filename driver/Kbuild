@@ -19,7 +19,12 @@ obj-m := rpbridge.o
 # conventionally named `<modname>.rs` and placed at the module root.
 # Our sources live under src/ — we symlink src/lib.rs to rpbridge.rs
 # at build time (see Makefile), so Kbuild can find it.
-rpbridge-y := src/lib.o
+#
+# src/ffi/shims.o is a small C translation unit that exposes kernel
+# inline helpers (usb_sndbulkpipe, etc.) and struct-field accessors as
+# real symbols Rust can call via extern "C" declarations in
+# src/ffi/bindings.rs. See src/ffi/mod.rs for rationale.
+rpbridge-y := src/lib.o src/ffi/shims.o
 
 # Enable additional warnings specific to our code (the kernel's default
 # flags already include `-W warnings` for the core lints).
