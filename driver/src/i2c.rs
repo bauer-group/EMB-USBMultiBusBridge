@@ -246,49 +246,83 @@ impl<T: RoundTrip + ?Sized> Client<T> {
     }
 }
 
-/* ═════ Layer 3 — auxiliary_device adapter ════════════════════════ */
+/* ═════ Layer 3 — i2c_adapter kernel integration ════════════════ */
 
-#[allow(dead_code)]
-pub(crate) struct I2cChild {
+use crate::ffi;
+
+struct I2cBackend {
     client: Client<RpbridgeState>,
+}
+
+impl ffi::i2c::I2cBackend for I2cBackend {
+    fn master_xfer(&self, msgs: &mut [ffi::i2c::I2cReq<'_>]) -> Result<usize, i32> {
+        // The FFI trampoline feeds us messages one at a time. Each
+        // call here handles exactly one i2c_msg → one RPBP XFER
+        // round-trip. Write-restart-read coalescing happens across
+        // successive trampoline calls: the i2c core passes the
+        // whole i2c_msg array in order, so we can detect the
+        // write → read@same_addr pattern via last-seen state.
+        //
+        // For simplicity we treat each message independently in this
+        // first cut — the firmware's XFER opcode handles a single
+        // STOP per transaction, which is correct for most sensors
+        // (SCD30, SHT31, BMP280, etc.). Callers needing repeated-
+        // start can use /dev/i2c-N's RDWR ioctl with explicit flags
+        // once we advertise I2C_FUNC_NOSTART.
+        if msgs.len() != 1 { return Err(crate::errno::EINVAL); }
+        let req = &mut msgs[0];
+        match &mut req.data {
+            ffi::i2c::MsgDir::Write(tx) => {
+                match self.client.xfer_msg(
+                    req.addr as u8, Direction::Write(tx), false
+                ) {
+                    Ok(_)  => Ok(1),
+                    Err(e) => Err(e),
+                }
+            }
+            ffi::i2c::MsgDir::Read(dst) => {
+                match self.client.xfer_msg(
+                    req.addr as u8, Direction::Read(dst.len() as u16), false
+                ) {
+                    Ok(MsgResult::Read(data)) => {
+                        let n = dst.len().min(data.len());
+                        dst[..n].copy_from_slice(&data.as_slice()[..n]);
+                        Ok(1)
+                    }
+                    Ok(_)  => Err(crate::errno::EIO),
+                    Err(e) => Err(e),
+                }
+            }
+        }
+    }
+    fn functionality(&self) -> u32 {
+        ffi::bindings::I2C_FUNC_I2C | ffi::bindings::I2C_FUNC_SMBUS_EMUL
+    }
+}
+
+pub(crate) struct I2cChild {
+    _handle: ffi::i2c::AdapterHandle,
     #[allow(dead_code)]
-    idx:    u16,
+    idx:     u16,
 }
 
 impl I2cChild {
     pub(crate) fn probe(
         state: Arc<RpbridgeState>, bus: &BusCaps,
     ) -> Result<Self> {
-        let client = Client::new(state, bus.idx as u8);
-        pr_info!("rpbridge-i2c.{}: probe (client ready)\n", bus.idx);
+        let client = Client::new(state.clone(), bus.idx as u8);
+        pr_info!("rpbridge-i2c.{}: probe\n", bus.idx);
 
-        // TODO §R4L-I2C-BINDINGS:
-        //
-        //   Once kernel::i2c::Adapter is wired up (WIP in 6.14+):
-        //
-        //     fn master_xfer(msgs: &[I2cMsg]) -> Result<usize> {
-        //         let pairs: Vec<(u8, Direction)> = msgs.iter()
-        //             .map(|m| (m.addr(), if m.flags().contains(I2C_M_RD) {
-        //                 Direction::Read(m.buf_len())
-        //             } else {
-        //                 Direction::Write(m.buf())
-        //             })).collect();
-        //         let results = client.xfer_msg_list(&pairs)?;
-        //         for (msg, res) in msgs.iter().zip(results) {
-        //             if let MsgResult::Read(data) = res {
-        //                 msg.buf_mut().copy_from_slice(&data);
-        //             }
-        //         }
-        //         Ok(msgs.len())
-        //     }
-        //
-        //     fn functionality() -> u32 { I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL }
+        let name = c"rpbridge-i2c";
+        let parent = crate::ffi::auxiliary::parent_device(
+            &*core::ops::Deref::deref(&state)
+        ).map_err(|e| kernel::error::Error::from_errno(e))?;
 
-        Ok(I2cChild { client, idx: bus.idx })
+        let backend = I2cBackend { client };
+        let handle = ffi::i2c::AdapterHandle::register(parent, name, backend)
+            .map_err(|e| kernel::error::Error::from_errno(e))?;
+        Ok(I2cChild { _handle: handle, idx: bus.idx })
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn client(&self) -> &Client<RpbridgeState> { &self.client }
 }
 
 /* ═════ Tests ═════════════════════════════════════════════════════ */
