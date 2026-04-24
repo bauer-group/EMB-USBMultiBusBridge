@@ -33,7 +33,7 @@ target_compile_options(rpbp_portable PRIVATE
     -Wstrict-prototypes -Wmissing-prototypes -Werror
 )
 
-foreach(_test IN ITEMS test_crc32c test_framing test_cbor)
+foreach(_test IN ITEMS test_crc32c test_framing test_cbor test_golden)
     add_executable(${_test} ${_test}.c)
     target_link_libraries(${_test} PRIVATE rpbp_portable)
     target_include_directories(${_test} PRIVATE "${CMAKE_CURRENT_LIST_DIR}")

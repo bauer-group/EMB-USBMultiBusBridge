@@ -188,12 +188,23 @@ authoritative spec section.
 
 ## M8 — Tests at scale
 
-- [ ] `tests/host/test_sys_dispatch.c` — round-trip through dispatch
-      + cmd_sys (needs a stub TX to capture responses)
-- [ ] `tests/golden/*` corpus populated — 10+ hand-verified RPBP
-      frames consumed by firmware tests and userspace Rust
-- [ ] Loopback self-test (`SELFTEST` opcode) exercising every bus on
-      the live device
+- [x] `tests/host/test_golden.c` — canonical-vector roundtrip corpus
+      (13 test cases) covering every subsystem wire format: SYS echo/
+      uptime/error, I²C probe / XFER, SPI XFER duplex, GPIO
+      SET_MASK / WATCH event, PWM configure, ADC read_many, UART
+      SET_PHY, 4 KB max-payload frame, RESET_CHANNEL on the events
+      channel. Each frame is built + parsed + field-asserted, so
+      any wire-format regression flips a single CI test red.
+- [ ] `tests/host/test_sys_dispatch.c` — round-trip through
+      cmd_sys + rpbp_dispatch with a stub TX capture. Blocked on
+      decoupling cmd_sys.c from pico-sdk headers (time_us_64,
+      bootrom, unique_id). Planned: `cmd_sys_host.c` shim or an
+      `RPBP_HOST_TEST` compile flag.
+- [ ] `tests/golden/*` byte-frozen corpus — hex files checked in so
+      the userspace Rust decoder can consume the same vectors. M8b.
+- [ ] Loopback self-test (`SELFTEST` opcode) exercising every bus
+      on the live device. M8b — needs the SPI MOSI↔MISO jumper + a
+      defined pass/fail bitmask format.
 
 ## M9 — Driver-priority mode (dual USB configuration)
 
