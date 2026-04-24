@@ -231,9 +231,9 @@ notification storm.
       map `{ uart: "cdc", i2c / spi / gpio / pwm / adc / can:
       "vendor" }`. Hosts route subsystem requests to the right
       endpoint (CDC vs vendor pipe) without guessing.
-- [ ] `docs/protocol/capabilities.md` schema updated to include the
-      `access` key. (Doc task — reader-visible in the emitter
-      since M9a.)
+- [x] `docs/protocol/capabilities.md` schema updated to include the
+      `access` key — "Access map" section with value table +
+      rev-B example + routing contract.
 
 ### M9b — optional UART driver claim (opt-in)
 

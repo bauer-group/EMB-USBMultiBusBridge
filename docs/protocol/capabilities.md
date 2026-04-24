@@ -21,6 +21,7 @@ version.
 | `max_streams`    | u16           | Maximum simultaneous dynamic streams.            |
 | `features`       | array[text]   | Free-form feature tags (see below).              |
 | `buses`          | map           | Per-bus descriptors (see below).                 |
+| `access`         | map           | Per-subsystem routing — see "Access map" below.  |
 | `channels`       | map           | Initial static channel assignments.              |
 | `max_rx_inflight`| map           | Initial credit budget, per channel.              |
 | `ota`            | map           | OTA mechanism + signing key fingerprint.         |
@@ -58,6 +59,42 @@ version.
   "max_rx_inflight": { "16": 8192, "48": 4096, "80": 256 }
 }
 ```
+
+## Access map
+
+The `access` top-level key tells the host **where each subsystem
+is reachable from**. Introduced in
+[ADR-0005](../adr/0005-driver-optional-coexistence.md) together
+with the single-configuration coexistence model.
+
+Value is a map from subsystem-class name to one of:
+
+| Value         | Meaning                                                               |
+|:--------------|:----------------------------------------------------------------------|
+| `"cdc"`       | Reachable only via the inbox `usbser`-bound CDC-ACM virtual COM port. |
+| `"vendor"`    | Reachable only via RPBP on the vendor interface (driver or libusb).    |
+| `"cdc+vendor"` | Reserved for future dual-reachable subsystems.                        |
+
+Example for rev-B firmware (default):
+
+```cbor
+"access": {
+  "uart": "cdc",
+  "i2c":  "vendor",
+  "spi":  "vendor",
+  "gpio": "vendor",
+  "pwm":  "vendor",
+  "adc":  "vendor",
+  "can":  "vendor"
+}
+```
+
+Hosts use this field to route subsystem requests to the correct
+endpoint without guessing — e.g. the Rust driver's `Capabilities`
+parser folds the access tags directly into each `BusCaps` entry so
+the i2c-adapter child knows "send XFER down the vendor pipe" and
+the (future) tty child knows "speak to the CDC". Unknown subsystem
+keys MUST be ignored per the forward-compatibility contract below.
 
 ## Feature-tag conventions
 
