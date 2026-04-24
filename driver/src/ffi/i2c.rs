@@ -32,9 +32,11 @@ pub trait I2cBackend: Send + Sync {
 }
 
 /// RAII handle for a registered i2c_adapter.
+type BackendCookie = *mut Box<dyn I2cBackend>;
+
 pub struct AdapterHandle {
     adap: NonNull<cc::i2c_adapter>,
-    backend_raw: *mut dyn I2cBackend,
+    backend_raw: BackendCookie,
 }
 
 unsafe impl Send for AdapterHandle {}
@@ -46,9 +48,15 @@ impl AdapterHandle {
         name:   &'static core::ffi::CStr,
         backend: B,
     ) -> Result<Self, i32> {
-        let boxed: Box<dyn I2cBackend> = Box::new(backend, GFP_KERNEL)
-            .map_err(|_| cc::ENOMEM)?;
-        let backend_raw: *mut dyn I2cBackend = Box::into_raw(boxed);
+        // Double-box so the cookie is a thin pointer (see gpio.rs
+        // for the full rationale — `*mut dyn Trait` does not fit in
+        // a `*mut c_void`).
+        let concrete: Box<B> =
+            Box::new(backend, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let inner: Box<dyn I2cBackend> = concrete;
+        let outer: Box<Box<dyn I2cBackend>> =
+            Box::new(inner, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let backend_raw: BackendCookie = Box::into_raw(outer);
 
         // SAFETY: parent is live; name is a static null-terminated
         // string; the shim copies the name into the adapter.
@@ -59,13 +67,21 @@ impl AdapterHandle {
                 backend_raw as *mut c_void,
             )
         };
-        let adap = NonNull::new(adap).ok_or(cc::ENOMEM)?;
+        let adap = match NonNull::new(adap) {
+            Some(p) => p,
+            None => {
+                // SAFETY: backend_raw came from Box::into_raw above
+                // and has not been handed off yet.
+                let _ = unsafe { Box::from_raw(backend_raw) };
+                return Err(cc::ENOMEM);
+            }
+        };
 
         // SAFETY: adap was just allocated by the shim.
         let rc = unsafe { cc::rpbridge_i2c_adapter_register(adap.as_ptr()) };
         if rc != 0 {
             unsafe { cc::rpbridge_i2c_adapter_free(adap.as_ptr()); }
-            let _reclaimed = unsafe { Box::from_raw(backend_raw) };
+            let _ = unsafe { Box::from_raw(backend_raw) };
             return Err(-rc);
         }
         Ok(AdapterHandle { adap, backend_raw })
@@ -80,16 +96,20 @@ impl Drop for AdapterHandle {
         // SAFETY: self.adap was returned by rpbridge_i2c_adapter_new.
         unsafe { cc::rpbridge_i2c_adapter_free(self.adap.as_ptr()); }
         // SAFETY: self.backend_raw came from Box::into_raw.
-        let _reclaimed = unsafe { Box::from_raw(self.backend_raw) };
+        let _outer: Box<Box<dyn I2cBackend>> =
+            unsafe { Box::from_raw(self.backend_raw) };
     }
 }
 
 /* ───── C → Rust trampolines ────────────────────────────────────── */
 
 fn cookie_as_backend<'a>(cookie: *mut c_void) -> &'a dyn I2cBackend {
-    // SAFETY: cookie is the backend_raw pointer stored inside the
-    // adapter, valid for the life of the registered adapter.
-    unsafe { &*(cookie as *const dyn I2cBackend) }
+    // SAFETY: the cookie is the thin *mut Box<dyn I2cBackend> we
+    // produced in AdapterHandle::register via Box::into_raw of the
+    // outer box. The inner Box carries the vtable; we reborrow
+    // through both levels to get a trait reference.
+    let outer = cookie as *const Box<dyn I2cBackend>;
+    unsafe { &**outer }
 }
 
 #[no_mangle]

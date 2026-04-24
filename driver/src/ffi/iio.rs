@@ -35,9 +35,11 @@ pub trait IioBackend: Send + Sync {
     fn read(&self, channel: i32, info: IioInfo) -> Result<IioReadVal, i32>;
 }
 
+type BackendCookie = *mut Box<dyn IioBackend>;
+
 pub struct DeviceHandle {
     indio: NonNull<cc::iio_dev>,
-    backend_raw: *mut dyn IioBackend,
+    backend_raw: BackendCookie,
 }
 
 unsafe impl Send for DeviceHandle {}
@@ -49,9 +51,13 @@ impl DeviceHandle {
         num_channels: u32,
         backend:      B,
     ) -> Result<Self, i32> {
-        let boxed: Box<dyn IioBackend> = Box::new(backend, GFP_KERNEL)
-            .map_err(|_| cc::ENOMEM)?;
-        let backend_raw: *mut dyn IioBackend = Box::into_raw(boxed);
+        // Double-box so the cookie is a thin pointer (see gpio.rs).
+        let concrete: Box<B> =
+            Box::new(backend, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let inner: Box<dyn IioBackend> = concrete;
+        let outer: Box<Box<dyn IioBackend>> =
+            Box::new(inner, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let backend_raw: BackendCookie = Box::into_raw(outer);
 
         // SAFETY: parent live; shim allocates via devm.
         let indio = unsafe {
@@ -61,11 +67,17 @@ impl DeviceHandle {
                 backend_raw as *mut c_void,
             )
         };
-        let indio = NonNull::new(indio).ok_or(cc::ENOMEM)?;
+        let indio = match NonNull::new(indio) {
+            Some(p) => p,
+            None => {
+                let _ = unsafe { Box::from_raw(backend_raw) };
+                return Err(cc::ENOMEM);
+            }
+        };
         let rc = unsafe { cc::rpbridge_iio_device_register(indio.as_ptr()) };
         if rc != 0 {
             unsafe { cc::rpbridge_iio_device_free(indio.as_ptr()); }
-            let _reclaimed = unsafe { Box::from_raw(backend_raw) };
+            let _ = unsafe { Box::from_raw(backend_raw) };
             return Err(-rc);
         }
         Ok(DeviceHandle { indio, backend_raw })
@@ -78,15 +90,18 @@ impl Drop for DeviceHandle {
         // devm_iio_device_alloc means the parent's teardown frees the
         // allocation; we only need to unregister.
         unsafe { cc::rpbridge_iio_device_free(self.indio.as_ptr()); }
-        let _reclaimed = unsafe { Box::from_raw(self.backend_raw) };
+        let _outer: Box<Box<dyn IioBackend>> =
+            unsafe { Box::from_raw(self.backend_raw) };
     }
 }
 
 /* ───── C → Rust trampoline ─────────────────────────────────────── */
 
 fn cookie_as_backend<'a>(cookie: *mut c_void) -> &'a dyn IioBackend {
-    // SAFETY: cookie is backend_raw, valid for the indio's life.
-    unsafe { &*(cookie as *const dyn IioBackend) }
+    // SAFETY: the cookie is the thin *mut Box<dyn IioBackend> from
+    // register()'s Box::into_raw. Reborrow through both boxes.
+    let outer = cookie as *const Box<dyn IioBackend>;
+    unsafe { &**outer }
 }
 
 #[no_mangle]

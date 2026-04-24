@@ -24,9 +24,11 @@ pub trait SpiBackend: Send + Sync {
     fn transfer_message(&self, cs_pin: u8, xfers: &mut [SpiXfer<'_>]) -> i32;
 }
 
+type BackendCookie = *mut Box<dyn SpiBackend>;
+
 pub struct ControllerHandle {
     ctlr: NonNull<cc::spi_controller>,
-    backend_raw: *mut dyn SpiBackend,
+    backend_raw: BackendCookie,
 }
 
 unsafe impl Send for ControllerHandle {}
@@ -38,9 +40,14 @@ impl ControllerHandle {
         num_chipselect: u16,
         backend: B,
     ) -> Result<Self, i32> {
-        let boxed: Box<dyn SpiBackend> = Box::new(backend, GFP_KERNEL)
-            .map_err(|_| cc::ENOMEM)?;
-        let backend_raw: *mut dyn SpiBackend = Box::into_raw(boxed);
+        // Double-box so the cookie is a thin pointer (see gpio.rs for
+        // rationale).
+        let concrete: Box<B> =
+            Box::new(backend, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let inner: Box<dyn SpiBackend> = concrete;
+        let outer: Box<Box<dyn SpiBackend>> =
+            Box::new(inner, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let backend_raw: BackendCookie = Box::into_raw(outer);
 
         // SAFETY: parent live; shim allocates + configures the
         // controller; returns NULL on OOM.
@@ -51,12 +58,18 @@ impl ControllerHandle {
                 backend_raw as *mut c_void,
             )
         };
-        let ctlr = NonNull::new(ctlr).ok_or(cc::ENOMEM)?;
+        let ctlr = match NonNull::new(ctlr) {
+            Some(p) => p,
+            None => {
+                let _ = unsafe { Box::from_raw(backend_raw) };
+                return Err(cc::ENOMEM);
+            }
+        };
         // SAFETY: ctlr is a freshly-allocated controller.
         let rc = unsafe { cc::rpbridge_spi_controller_register(ctlr.as_ptr()) };
         if rc != 0 {
             unsafe { cc::rpbridge_spi_controller_free(ctlr.as_ptr()); }
-            let _reclaimed = unsafe { Box::from_raw(backend_raw) };
+            let _ = unsafe { Box::from_raw(backend_raw) };
             return Err(-rc);
         }
         Ok(ControllerHandle { ctlr, backend_raw })
@@ -68,16 +81,19 @@ impl Drop for ControllerHandle {
         // SAFETY: self.ctlr was returned by rpbridge_spi_controller_new.
         unsafe { cc::rpbridge_spi_controller_free(self.ctlr.as_ptr()); }
         // SAFETY: reclaim the boxed backend.
-        let _reclaimed = unsafe { Box::from_raw(self.backend_raw) };
+        let _outer: Box<Box<dyn SpiBackend>> =
+            unsafe { Box::from_raw(self.backend_raw) };
     }
 }
 
 /* ───── C → Rust trampoline ─────────────────────────────────────── */
 
 fn cookie_as_backend<'a>(cookie: *mut c_void) -> &'a dyn SpiBackend {
-    // SAFETY: cookie is the backend_raw pointer, valid for the
-    // controller's life.
-    unsafe { &*(cookie as *const dyn SpiBackend) }
+    // SAFETY: the cookie is the thin *mut Box<dyn SpiBackend>
+    // produced by Box::into_raw of the outer box in register(). We
+    // reborrow through both boxes to obtain a trait reference.
+    let outer = cookie as *const Box<dyn SpiBackend>;
+    unsafe { &**outer }
 }
 
 #[no_mangle]

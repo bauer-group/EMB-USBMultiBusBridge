@@ -24,9 +24,11 @@ pub trait PwmBackend: Send + Sync {
     fn get_state(&self, hwpwm: u32) -> Result<PwmState, i32>;
 }
 
+type BackendCookie = *mut Box<dyn PwmBackend>;
+
 pub struct ChipHandle {
     chip: NonNull<cc::pwm_chip>,
-    backend_raw: *mut dyn PwmBackend,
+    backend_raw: BackendCookie,
 }
 
 unsafe impl Send for ChipHandle {}
@@ -38,9 +40,14 @@ impl ChipHandle {
         npwm:   u32,
         backend: B,
     ) -> Result<Self, i32> {
-        let boxed: Box<dyn PwmBackend> = Box::new(backend, GFP_KERNEL)
-            .map_err(|_| cc::ENOMEM)?;
-        let backend_raw: *mut dyn PwmBackend = Box::into_raw(boxed);
+        // Double-box so the cookie is a thin pointer (see gpio.rs
+        // for rationale).
+        let concrete: Box<B> =
+            Box::new(backend, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let inner: Box<dyn PwmBackend> = concrete;
+        let outer: Box<Box<dyn PwmBackend>> =
+            Box::new(inner, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let backend_raw: BackendCookie = Box::into_raw(outer);
 
         // SAFETY: parent live; shim allocates.
         let chip = unsafe {
@@ -50,12 +57,18 @@ impl ChipHandle {
                 backend_raw as *mut c_void,
             )
         };
-        let chip = NonNull::new(chip).ok_or(cc::ENOMEM)?;
+        let chip = match NonNull::new(chip) {
+            Some(p) => p,
+            None => {
+                let _ = unsafe { Box::from_raw(backend_raw) };
+                return Err(cc::ENOMEM);
+            }
+        };
         // SAFETY: chip is freshly allocated.
         let rc = unsafe { cc::rpbridge_pwm_chip_register(chip.as_ptr()) };
         if rc != 0 {
             unsafe { cc::rpbridge_pwm_chip_free(chip.as_ptr()); }
-            let _reclaimed = unsafe { Box::from_raw(backend_raw) };
+            let _ = unsafe { Box::from_raw(backend_raw) };
             return Err(-rc);
         }
         Ok(ChipHandle { chip, backend_raw })
@@ -66,15 +79,18 @@ impl Drop for ChipHandle {
     fn drop(&mut self) {
         // SAFETY: self.chip was returned by rpbridge_pwm_chip_new.
         unsafe { cc::rpbridge_pwm_chip_free(self.chip.as_ptr()); }
-        let _reclaimed = unsafe { Box::from_raw(self.backend_raw) };
+        let _outer: Box<Box<dyn PwmBackend>> =
+            unsafe { Box::from_raw(self.backend_raw) };
     }
 }
 
 /* ───── C → Rust trampolines ────────────────────────────────────── */
 
 fn cookie_as_backend<'a>(cookie: *mut c_void) -> &'a dyn PwmBackend {
-    // SAFETY: cookie is the backend_raw pointer stored in the chip.
-    unsafe { &*(cookie as *const dyn PwmBackend) }
+    // SAFETY: the cookie is the thin *mut Box<dyn PwmBackend> from
+    // register()'s Box::into_raw. Reborrow through both boxes.
+    let outer = cookie as *const Box<dyn PwmBackend>;
+    unsafe { &**outer }
 }
 
 fn c_state_to_rust(c_state: *const cc::pwm_state) -> PwmState {

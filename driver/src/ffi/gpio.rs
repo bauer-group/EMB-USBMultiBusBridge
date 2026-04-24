@@ -36,13 +36,18 @@ pub trait GpioBackend: Send + Sync {
     fn release(&self, line: u32);
 }
 
+/// Pointer to a heap-allocated `Box<dyn GpioBackend>`. The DOUBLE box
+/// is intentional: `*mut dyn Trait` is a fat pointer (data + vtable)
+/// and cannot round-trip through `*mut c_void`. We hand the kernel
+/// the thin outer pointer; the inner Box holds the vtable alongside
+/// the concrete backend.
+type BackendCookie = *mut Box<dyn GpioBackend>;
+
 /// RAII handle for a registered gpio_chip. Drops unregister the
 /// chip + reclaim the boxed backend.
 pub struct ChipHandle {
     chip: NonNull<cc::gpio_chip>,
-    // Kept as a raw pointer so its address stays stable while the
-    // kernel holds on to it via the cookie. We reclaim it in Drop.
-    backend_raw: *mut dyn GpioBackend,
+    backend_raw: BackendCookie,
 }
 
 unsafe impl Send for ChipHandle {}
@@ -60,14 +65,18 @@ impl ChipHandle {
         ngpio: u16,
         backend: B,
     ) -> Result<Self, i32> {
-        // Box the backend so it has a stable address for the cookie.
-        let boxed: Box<dyn GpioBackend> = Box::new(backend, GFP_KERNEL)
-            .map_err(|_| cc::ENOMEM)?;
-        let backend_raw: *mut dyn GpioBackend = Box::into_raw(boxed);
+        // Double-box so the cookie is a thin pointer: the outer Box
+        // contains the inner Box<dyn Trait> which carries the vtable.
+        let concrete: Box<B> =
+            Box::new(backend, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let inner: Box<dyn GpioBackend> = concrete;
+        let outer: Box<Box<dyn GpioBackend>> =
+            Box::new(inner, GFP_KERNEL).map_err(|_| cc::ENOMEM)?;
+        let backend_raw: BackendCookie = Box::into_raw(outer);
 
         // SAFETY: parent is a live device pointer; label is a static
-        // null-terminated string; backend_raw owns the backing memory
-        // until Drop.
+        // null-terminated string; backend_raw is a thin pointer whose
+        // backing memory stays live until Drop.
         let chip = unsafe {
             cc::rpbridge_gpio_chip_new(
                 parent.as_ptr(),
@@ -77,18 +86,24 @@ impl ChipHandle {
                 backend_raw as *mut c_void,
             )
         };
-        let chip = NonNull::new(chip).ok_or(cc::ENOMEM)?;
+        let chip = match NonNull::new(chip) {
+            Some(p) => p,
+            None => {
+                // SAFETY: backend_raw came from Box::into_raw above
+                // and has not been handed to the kernel.
+                let _ = unsafe { Box::from_raw(backend_raw) };
+                return Err(cc::ENOMEM);
+            }
+        };
 
         // SAFETY: chip was just allocated; `rpbridge_gpio_chip_register`
         // calls gpiochip_add_data which either succeeds or returns -errno.
         let rc = unsafe { cc::rpbridge_gpio_chip_register(chip.as_ptr()) };
         if rc != 0 {
-            // Unwind: free the chip + reclaim the Box.
-            unsafe { cc::rpbridge_gpio_chip_free(chip.as_ptr()) };
-            // SAFETY: we just created this from Box::into_raw; no
-            // vtable call has happened yet because registration
-            // failed, so reclaiming is sound.
-            let _reclaimed = unsafe { Box::from_raw(backend_raw) };
+            unsafe { cc::rpbridge_gpio_chip_free(chip.as_ptr()); }
+            // SAFETY: no vtable call can have happened because
+            // registration failed.
+            let _ = unsafe { Box::from_raw(backend_raw) };
             return Err(-rc);
         }
 
@@ -118,9 +133,9 @@ impl Drop for ChipHandle {
         // Now it is safe to reclaim the backend. No vtable call can
         // see the dangling pointer because the chip is gone.
         // SAFETY: self.backend_raw came from Box::into_raw in
-        // register(); we hand ownership back to the Box and it is
-        // dropped on function exit.
-        let _reclaimed = unsafe { Box::from_raw(self.backend_raw) };
+        // register(); reclaim drops the outer + inner boxes.
+        let _outer: Box<Box<dyn GpioBackend>> =
+            unsafe { Box::from_raw(self.backend_raw) };
     }
 }
 
@@ -137,11 +152,14 @@ impl Drop for ChipHandle {
  */
 
 fn cookie_as_backend<'a>(cookie: *mut c_void) -> &'a dyn GpioBackend {
-    // SAFETY: the cookie stored by gpiochip_get_data is the
-    // backend_raw pointer we set in ChipHandle::register. It points
-    // at a live `Box<dyn GpioBackend>` for the duration of the
-    // registered chip's life.
-    unsafe { &*(cookie as *const dyn GpioBackend) }
+    // SAFETY: the cookie is the thin *mut Box<dyn GpioBackend> we
+    // produced in ChipHandle::register via `Box::into_raw` of the
+    // outer box. The inner Box carries the vtable and stays live
+    // for the duration of the registered chip. We reborrow through
+    // the two levels of indirection to get an immutable trait
+    // reference usable for the callback's lifetime.
+    let outer = cookie as *const Box<dyn GpioBackend>;
+    unsafe { &**outer }
 }
 
 #[no_mangle]
