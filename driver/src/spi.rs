@@ -81,18 +81,22 @@ pub mod wire {
     }
 }
 
+use kernel::sync::Arc;
+use crate::cap::BusCaps;
+use crate::core_driver::RpbridgeState;
+
 #[allow(dead_code)]
-pub(crate) struct SpiChild;
+pub(crate) struct SpiChild {
+    _state: Arc<RpbridgeState>,
+    _idx:   u16,
+}
 
 #[allow(dead_code)]
 impl SpiChild {
-    pub(crate) fn probe() -> Result<Self> {
-        pr_info!("rpbridge-spi: probe (wire layer ready; controller stub)\n");
-        // TODO: register a kernel::spi::Controller with `transfer_one_message`.
-        //   Iterate spi_message::xfers, call wire::build_xfer with HOLD_CS
-        //   set on every xfer except the last (honour cs_change=0). Chip-
-        //   selects drive gpio directly on the firmware via FLAG_HOLD_CS —
-        //   the controller's native CS line handling is unused.
-        Ok(SpiChild)
+    pub(crate) fn probe(
+        state: Arc<RpbridgeState>, bus: &BusCaps,
+    ) -> Result<Self> {
+        pr_info!("rpbridge-spi.{}: probe (controller wiring pending)\n", bus.idx);
+        Ok(SpiChild { _state: state, _idx: bus.idx })
     }
 }

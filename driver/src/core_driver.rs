@@ -292,6 +292,84 @@ impl RpbridgeState {
     }
 }
 
+/* ───── Capability-driven aux_device spawn ─────────────────────────── */
+
+/// Walk the parsed capability map and spawn one aux_device per bus
+/// whose access is "vendor" (RPBP) or "cdc+vendor". Called from
+/// probe() once CAPABILITIES has completed and state.inner.caps is
+/// populated. UART and CAN are skipped per ADR-0006 — they are bound
+/// by `usbser` and `gs_usb.ko` respectively.
+///
+/// Returns the number of children spawned, or an error from the first
+/// child that failed to register. Partial spawn on failure is
+/// unwound by the caller via drop-of-state.
+#[allow(dead_code)]
+pub(crate) fn spawn_children(state: Arc<RpbridgeState>) -> Result<usize, i32> {
+    // Take the caps out under the lock then drop it — Child::probe()
+    // issues round-trips, and the inner lock must not be held across
+    // a USB transfer.
+    let caps_snapshot = {
+        let g = state.inner.lock();
+        match g.caps.as_ref() {
+            Some(c) => clone_caps_for_spawn(c),
+            None => return Err(crate::errno::EPROTO),
+        }
+    };
+
+    let mut spawned = 0usize;
+    for (class, idx) in caps_snapshot.iter() {
+        // Skip CDC-routed classes — ADR-0006 makes this a hard rule.
+        let is_vendor = match class.as_slice() {
+            b"uart" | b"can" => false,
+            b"gpio" | b"i2c" | b"spi" | b"pwm" | b"adc" => true,
+            _ => false,
+        };
+        if !is_vendor { continue; }
+
+        let bus = crate::cap::BusCaps {
+            class: KString::try_from(
+                core::str::from_utf8(class).map_err(|_| crate::errno::EPROTO)?,
+            ).map_err(|_| crate::errno::ENOMEM)?,
+            idx: *idx,
+            pins: Vec::new(),
+            max_freq_hz: 0,
+            access: KString::new(),
+        };
+
+        // TODO §R4L-AUX-BINDINGS: each of these will return an
+        //   `auxiliary_device` handle that gets wrapped in a
+        //   `struct aux_device_wrap` and registered via
+        //   auxiliary_device_register(). Until those bindings land,
+        //   we construct the child in-place to exercise the probe
+        //   path end-to-end.
+        match class.as_slice() {
+            b"gpio" => { let _ = crate::gpio::GpioChild::probe(state.clone(), &bus)?; }
+            b"i2c"  => { let _ = crate::i2c::I2cChild::probe(state.clone(), &bus)?; }
+            b"spi"  => { let _ = crate::spi::SpiChild::probe(state.clone(), &bus)?; }
+            b"pwm"  => { let _ = crate::pwm::PwmChild::probe(state.clone(), &bus)?; }
+            b"adc"  => { let _ = crate::iio::IioChild::probe(state.clone(), &bus)?; }
+            _ => {}
+        }
+        spawned += 1;
+    }
+    pr_info!("rpbridge: spawned {} aux_device children\n", spawned);
+    Ok(spawned)
+}
+
+/// Extract (class, idx) pairs from the Capabilities so the spawn
+/// loop doesn't hold an Arc<Capabilities> across round-trips. The
+/// child's own probe() re-reads the full BusCaps from state if it
+/// needs pin lists or frequency limits.
+fn clone_caps_for_spawn(caps: &Capabilities) -> Vec<(KVec<u8>, u16)> {
+    let mut out = Vec::new();
+    for bus in caps.buses.iter() {
+        let mut cls = KVec::new();
+        let _ = cls.extend_from_slice(bus.class.as_bytes(), GFP_KERNEL);
+        let _ = out.push((cls, bus.idx), GFP_KERNEL);
+    }
+    out
+}
+
 /* ───── USB driver glue ────────────────────────────────────────────── */
 
 #[allow(dead_code)]

@@ -74,17 +74,22 @@ pub mod wire {
     }
 }
 
+use kernel::sync::Arc;
+use crate::cap::BusCaps;
+use crate::core_driver::RpbridgeState;
+
 #[allow(dead_code)]
-pub(crate) struct PwmChild;
+pub(crate) struct PwmChild {
+    _state: Arc<RpbridgeState>,
+    _idx:   u16,
+}
 
 #[allow(dead_code)]
 impl PwmChild {
-    pub(crate) fn probe() -> Result<Self> {
-        pr_info!("rpbridge-pwm: probe (wire layer ready; chip adapter stub)\n");
-        // TODO: register a kernel::pwm::Chip. .apply() converts the
-        //   canonical pwm_state { period_ns, duty_ns, polarity, enabled }
-        //   into duty_q16 + freq_hz and calls wire::build_configure.
-        //   freq_hz = 1e9 / period_ns; duty_q16 = 0xFFFF * duty_ns / period_ns.
-        Ok(PwmChild)
+    pub(crate) fn probe(
+        state: Arc<RpbridgeState>, bus: &BusCaps,
+    ) -> Result<Self> {
+        pr_info!("rpbridge-pwm.{}: probe (chip wiring pending)\n", bus.idx);
+        Ok(PwmChild { _state: state, _idx: bus.idx })
     }
 }

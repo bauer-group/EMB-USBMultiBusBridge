@@ -94,20 +94,24 @@ pub mod wire {
     }
 }
 
-/* ═════ Layer 2 — auxiliary_device adapter (stub) ═════════════════ */
+/* ═════ Layer 2 — auxiliary_device adapter (signature only) ══════ */
+
+use kernel::sync::Arc;
+use crate::cap::BusCaps;
+use crate::core_driver::RpbridgeState;
 
 #[allow(dead_code)]
-pub(crate) struct I2cChild;
+pub(crate) struct I2cChild {
+    _state: Arc<RpbridgeState>,
+    _idx:   u16,
+}
 
 #[allow(dead_code)]
 impl I2cChild {
-    pub(crate) fn probe() -> Result<Self> {
-        pr_info!("rpbridge-i2c: probe (wire layer ready; adapter stub)\n");
-        // TODO: register a kernel::i2c::Adapter. Its `master_xfer`
-        //   iterates struct i2c_msg, calls wire::build_xfer for each,
-        //   does one RPBP round-trip per message, honours NO_STOP /
-        //   repeated-start semantics via the firmware's FLAG_NO_STOP.
-        //   Functionality = I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL.
-        Ok(I2cChild)
+    pub(crate) fn probe(
+        state: Arc<RpbridgeState>, bus: &BusCaps,
+    ) -> Result<Self> {
+        pr_info!("rpbridge-i2c.{}: probe (adapter wiring pending)\n", bus.idx);
+        Ok(I2cChild { _state: state, _idx: bus.idx })
     }
 }

@@ -81,20 +81,22 @@ pub mod wire {
     }
 }
 
+use kernel::sync::Arc;
+use crate::cap::BusCaps;
+use crate::core_driver::RpbridgeState;
+
 #[allow(dead_code)]
-pub(crate) struct IioChild;
+pub(crate) struct IioChild {
+    _state: Arc<RpbridgeState>,
+    _idx:   u16,
+}
 
 #[allow(dead_code)]
 impl IioChild {
-    pub(crate) fn probe() -> Result<Self> {
-        pr_info!("rpbridge-iio: probe (wire layer ready; iio_dev adapter stub)\n");
-        // TODO: register a kernel::iio::Device with channels A0..A3 as
-        //   IIO_VOLTAGE and the temperature sensor as IIO_TEMPERATURE.
-        //   `read_raw(IIO_CHAN_INFO_RAW)`   -> wire::build_read + parse
-        //   `read_raw(IIO_CHAN_INFO_SCALE)` -> vref_mv / 4095 (Q fixed)
-        //   `read_raw(IIO_CHAN_INFO_PROCESSED)` for temp -> cdegC/100.
-        //   Streaming mode (triggered buffer) lands with M6b once the
-        //   firmware emits STREAM_DATA on a dynamic channel.
-        Ok(IioChild)
+    pub(crate) fn probe(
+        state: Arc<RpbridgeState>, bus: &BusCaps,
+    ) -> Result<Self> {
+        pr_info!("rpbridge-iio.{}: probe (iio_dev wiring pending)\n", bus.idx);
+        Ok(IioChild { _state: state, _idx: bus.idx })
     }
 }
