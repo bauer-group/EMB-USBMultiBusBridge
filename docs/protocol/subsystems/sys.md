@@ -23,8 +23,10 @@ CBOR is permitted and is the default for `GET_CAPABILITIES`.
 | `0x06` | `SELFTEST`       | no           | Run the on-device loopback self-test.    |
 | `0x07` | `GET_IDENTITY`   | yes          | Board / firmware / serial identity.      |
 | `0x08` | `RESET`          | no           | Soft-reset the device (re-enumerates).   |
+| `0x09` | `UART_CLAIM`     | no           | Driver asks CDC pump to stop touching a UART. |
+| `0x0A` | `UART_RELEASE`   | no           | Release a previously-claimed UART.       |
 
-Opcodes `0x09..0x7F` are reserved for additive MINOR-version
+Opcodes `0x0B..0x7F` are reserved for additive MINOR-version
 extensions. `0x80..0xFF` are vendor-reserved and MUST NOT appear in
 upstream firmware.
 
@@ -306,6 +308,86 @@ link drops.
  |  0x00  |  0x08  |   OK   |
  +--------+--------+--------+
 ```
+
+## `0x09 — UART_CLAIM`
+
+Driver-coordinated UART hand-off (see
+[ADR-0005](../../adr/0005-driver-optional-coexistence.md) §M9b).
+When a UART instance is claimed, the firmware's CDC pump stops
+forwarding bytes between its CDC-ACM(s) and the UART hardware:
+
+- CDC → UART: host writes into the CDC-ACM's TX FIFO are silently
+  drained; the bytes never reach the UART hardware.
+- UART → CDC: bytes coming in on the UART do NOT appear on the CDC
+  RX side. The CDC goes dark from the host's perspective.
+- The UART hardware itself keeps running; bytes arriving on RX
+  accumulate in the HW ring (or overflow-drop once the ring fills
+  — claim-holder's responsibility to service them).
+
+Claims are per UART instance:
+
+| `uart_idx` | Instance   | Physical UART             |
+|:----------:|:-----------|:--------------------------|
+| `0`        | `UART0 HW` | phy-bank (RS232/RS485/TTL) |
+| `1`        | `UART2 PIO`| GP33/GP36 PIO UART        |
+
+Indexes ≥ 2 return `EINVAL`.
+
+**Request (binary):**
+
+```text
+ 0        1        2
+ +--------+--------+--------+
+ |  0x00  |  0x09  | uart_id|
+ +--------+--------+--------+
+```
+
+**Response (binary):**
+
+```text
+ 0        1        2
+ +--------+--------+--------+
+ |  0x00  |  0x09  | status |
+ +--------+--------+--------+
+```
+
+`status = OK` on successful claim (idempotent — re-claiming an
+already-claimed instance is OK). `status = EINVAL` if `uart_idx ≥ 2`.
+
+Claims are NOT persisted across resets: a soft reset / re-enumeration
+clears every claim.
+
+## `0x0A — UART_RELEASE`
+
+Release a previously-claimed UART instance. The CDC pump resumes
+bidirectional forwarding starting with the next `cdc_glue_poll()`
+tick.
+
+**Request (binary):**
+
+```text
+ 0        1        2
+ +--------+--------+--------+
+ |  0x00  |  0x0A  | uart_id|
+ +--------+--------+--------+
+```
+
+**Response (binary):**
+
+```text
+ 0        1        2
+ +--------+--------+--------+
+ |  0x00  |  0x0A  | status |
+ +--------+--------+--------+
+```
+
+`status = OK` on successful release (idempotent — releasing a free
+instance is OK). `status = EINVAL` if `uart_idx ≥ 2`.
+
+RPBP v1 has no session/identity tracking, so any host that can speak
+RPBP can issue claim/release. Coordination between multiple potential
+claim holders is a higher-layer concern (the Linux driver handles it
+by holding the claim for the lifetime of an `ioctl`-scoped operation).
 
 ## Error behaviour
 

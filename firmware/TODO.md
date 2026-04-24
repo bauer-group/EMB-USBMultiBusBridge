@@ -237,21 +237,22 @@ notification storm.
 
 ### M9b — optional UART driver claim (opt-in)
 
-- [ ] New `SYS UART_CLAIM` / `SYS UART_RELEASE` opcodes
-      (`0x09` / `0x0A`) — per-UART-instance boolean latch. While
-      claimed, `cdc_glue.c` silently drains host writes to the
-      matching CDC and routes bytes via RPBP stream channels
-      instead. Released automatically on device disconnect.
-- [ ] `cdc_glue.c`: honours the claim flag in its arbiter (one
-      extra branch — cheap).
-- [ ] CDC-to-UART TX path: when claimed, writes coming from a CDC
-      FIFO are discarded rather than pushed to UART0 HW. RX bytes
-      from UART0 HW are NOT forwarded to the CDC (host-side
+- [x] New `SYS UART_CLAIM` / `SYS UART_RELEASE` opcodes
+      (`0x09` / `0x0A`) — per-UART-instance boolean latch via a
+      2-bit `g_uart_claim_mask` in cmd_sys.c. Idempotent claim /
+      release; invalid `uart_idx` returns `EINVAL`; claims cleared
+      on device reset (no persistence).
+- [x] `cdc_glue.c` honours the claim flag in its arbiter — two
+      new branches (one per UART instance) that swap the bidirec-
+      tional pump for `drain_inactive_cdc()` when claimed.
+- [x] CDC-to-UART TX path: when claimed, writes from the CDC FIFO
+      are silently drained (via `drain_inactive_cdc`) and UART RX
+      is NOT forwarded to the CDC. Host-side
       `/dev/rpbridge-uart1-*` goes dark for the duration of the
-      claim).
-- [ ] Ship only when the Rust driver gains a use-case that exceeds
-      what termios-over-CDC already delivers. Not a blocker for
-      M9a or the driver's initial release.
+      claim; UART HW keeps running so the claim holder can read via
+      `uart_hw_read()` / `uart_pio_read()` through its own path.
+- [x] Documented in `docs/protocol/subsystems/sys.md` §0x09 /
+      §0x0A. Reserved-opcodes range tightened to `0x0B..0x7F`.
 
 ### M9c — kernel-driver wiring
 

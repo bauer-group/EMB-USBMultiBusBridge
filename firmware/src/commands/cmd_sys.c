@@ -43,6 +43,24 @@ bool cmd_sys_get_led_override(struct cmd_sys_led_override *out)
     return true;
 }
 
+/* ───── UART claim state (consumed by cdc_glue pump path) ────────────── */
+
+/*
+ * 2-bit mask: bit 0 = UART0 HW, bit 1 = UART2 PIO.
+ * Set via SYS_UART_CLAIM, cleared via SYS_UART_RELEASE. Operations are
+ * idempotent (claiming an already-claimed UART returns OK, releasing
+ * a free UART returns OK). The instance count is fixed by the board's
+ * UART layout — no dynamic allocation.
+ */
+#define CMD_SYS_UART_INSTANCE_COUNT  2u
+static volatile uint8_t g_uart_claim_mask;
+
+bool cmd_sys_uart_claimed(uint8_t uart_idx)
+{
+    if (uart_idx >= CMD_SYS_UART_INSTANCE_COUNT) return false;
+    return (g_uart_claim_mask >> uart_idx) & 1u;
+}
+
 int cmd_sys_set_led(uint8_t r, uint8_t g, uint8_t b,
                     uint8_t mode, uint8_t brightness_pct)
 {
@@ -303,6 +321,51 @@ static enum rpbp_status op_reset(const struct rpbp_header *req,
     return RPBP_OK;
 }
 
+/* ───── UART_CLAIM / UART_RELEASE ────────────────────────────────────── */
+
+static enum rpbp_status op_uart_claim(const struct rpbp_header *req,
+                                      const uint8_t *args, size_t args_len)
+{
+    if (args_len != 1) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_UART_CLAIM,
+                       RPBP_EMSGSIZE, NULL, 0, false);
+        return RPBP_OK;
+    }
+    uint8_t uart_idx = args[0];
+    if (uart_idx >= CMD_SYS_UART_INSTANCE_COUNT) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_UART_CLAIM,
+                       RPBP_EINVAL, NULL, 0, false);
+        return RPBP_OK;
+    }
+    /* Idempotent: re-claim by the same logical owner is a no-op. RPBP
+     * has no session/identity tracking in v1 so any host can claim —
+     * intentional; coordination is a higher-layer concern. */
+    g_uart_claim_mask |= (uint8_t)(1u << uart_idx);
+    rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_UART_CLAIM,
+                   RPBP_OK, NULL, 0, false);
+    return RPBP_OK;
+}
+
+static enum rpbp_status op_uart_release(const struct rpbp_header *req,
+                                        const uint8_t *args, size_t args_len)
+{
+    if (args_len != 1) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_UART_RELEASE,
+                       RPBP_EMSGSIZE, NULL, 0, false);
+        return RPBP_OK;
+    }
+    uint8_t uart_idx = args[0];
+    if (uart_idx >= CMD_SYS_UART_INSTANCE_COUNT) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_UART_RELEASE,
+                       RPBP_EINVAL, NULL, 0, false);
+        return RPBP_OK;
+    }
+    g_uart_claim_mask &= (uint8_t)~(1u << uart_idx);
+    rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_UART_RELEASE,
+                   RPBP_OK, NULL, 0, false);
+    return RPBP_OK;
+}
+
 /* ───── Dispatch ─────────────────────────────────────────────────────── */
 
 enum rpbp_status cmd_sys_dispatch(const struct rpbp_header *req,
@@ -320,6 +383,8 @@ enum rpbp_status cmd_sys_dispatch(const struct rpbp_header *req,
     case RPBP_SYS_SELFTEST:         return op_selftest(req, args, args_len);
     case RPBP_SYS_GET_IDENTITY:     return op_get_identity(req);
     case RPBP_SYS_RESET:            return op_reset(req, args, args_len);
+    case RPBP_SYS_UART_CLAIM:       return op_uart_claim(req, args, args_len);
+    case RPBP_SYS_UART_RELEASE:     return op_uart_release(req, args, args_len);
     default:
         rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, opcode, RPBP_ENOENT,
                        NULL, 0, false);

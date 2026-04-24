@@ -125,6 +125,8 @@ enum rpbp_sys_op {
     RPBP_SYS_SELFTEST         = 0x06,
     RPBP_SYS_GET_IDENTITY     = 0x07,
     RPBP_SYS_RESET            = 0x08,
+    RPBP_SYS_UART_CLAIM       = 0x09,  /* driver asks CDC to stop touching a UART  */
+    RPBP_SYS_UART_RELEASE     = 0x0A,  /* release the claim, CDC resumes pump-path */
 };
 
 /* ───── I²C opcodes (subsys = 1) ─────────────────────────────────────── */

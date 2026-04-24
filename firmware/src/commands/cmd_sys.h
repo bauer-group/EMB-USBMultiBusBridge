@@ -59,6 +59,18 @@ struct cmd_sys_led_override {
  */
 bool cmd_sys_get_led_override(struct cmd_sys_led_override *out);
 
+/*
+ * UART claim state — queried by cdc_glue's pump path. When the driver
+ * asserts SYS_UART_CLAIM for a given instance, cdc_glue stops
+ * forwarding bytes between the CDC and the UART hardware; reads on
+ * the CDC side go silent, writes are drained. Released via
+ * SYS_UART_RELEASE. The claim is per UART instance:
+ *   0 — UART0 HW (shared by RS232/RS485/TTL CDCs via phy-bank)
+ *   1 — UART2 PIO (CDC #3)
+ * Values ≥ 2 always return false.
+ */
+bool cmd_sys_uart_claimed(uint8_t uart_idx);
+
 #ifdef __cplusplus
 }
 #endif

@@ -48,6 +48,7 @@
 #include "peripherals/uart_hw.h"
 #include "peripherals/uart_pio.h"
 #include "peripherals/uart_phy.h"
+#include "commands/cmd_sys.h"
 
 #include "tusb.h"
 #include "hardware/uart.h"
@@ -202,12 +203,24 @@ void cdc_glue_poll(void)
      * while we service CDC traffic. */
     uart_pio_tick(0u);
 
+    /* SYS_UART_CLAIM check — when the driver has claimed an instance,
+     * the pump stops forwarding bytes between its CDCs and the UART
+     * hardware entirely. CDC writes are silently drained so the USB
+     * pipe does not stall; UART bytes accumulate in uart_hw's ring
+     * (the claim holder is responsible for reading them). See
+     * docs/protocol/subsystems/sys.md §UART_CLAIM. */
+    const bool uart0_claimed = cmd_sys_uart_claimed(0u);
+    const bool uart1_claimed = cmd_sys_uart_claimed(1u);
+
     /* UART0 HW — only the active CDC bidirects; the other two UART0
-     * CDCs just get their RX FIFOs drained into the bit bucket. */
+     * CDCs just get their RX FIFOs drained into the bit bucket.
+     * A claim on UART0 makes every UART0 CDC look "inactive". */
     for (uint8_t itf = CDC_ITF_UART1_RS232; itf <= CDC_ITF_UART1_TTL; ++itf) {
         if (!tud_cdc_n_ready(itf)) continue;
 
-        if ((int)itf == g_active_uart0_cdc) {
+        if (uart0_claimed) {
+            drain_inactive_cdc(itf);
+        } else if ((int)itf == g_active_uart0_cdc) {
             pump_cdc_to_hw(itf, 0u);
             pump_hw_to_cdc(0u, itf);
         } else {
@@ -215,10 +228,15 @@ void cdc_glue_poll(void)
         }
     }
 
-    /* UART 2 (PIO) — independent from UART0, always bidirectional. */
+    /* UART 2 (PIO) — independent from UART0, always bidirectional
+     * unless claimed by the driver. */
     if (tud_cdc_n_ready(CDC_ITF_UART2_TTL)) {
-        pump_cdc_to_pio(CDC_ITF_UART2_TTL, 0u);
-        pump_pio_to_cdc(0u, CDC_ITF_UART2_TTL);
+        if (uart1_claimed) {
+            drain_inactive_cdc(CDC_ITF_UART2_TTL);
+        } else {
+            pump_cdc_to_pio(CDC_ITF_UART2_TTL, 0u);
+            pump_pio_to_cdc(0u, CDC_ITF_UART2_TTL);
+        }
     }
 
     /* RS485 DE deassertion + PIO FIFO trailing drain. */
