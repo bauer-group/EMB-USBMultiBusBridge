@@ -207,13 +207,23 @@ authoritative spec section.
       SET_PHY, 4 KB max-payload frame, RESET_CHANNEL on the events
       channel. Each frame is built + parsed + field-asserted, so
       any wire-format regression flips a single CI test red.
-- [ ] `tests/host/test_sys_dispatch.c` — round-trip through
-      cmd_sys + rpbp_dispatch with a stub TX capture. Blocked on
-      decoupling cmd_sys.c from pico-sdk headers (time_us_64,
-      bootrom, unique_id). Planned: `cmd_sys_host.c` shim or an
-      `RPBP_HOST_TEST` compile flag.
-- [ ] `tests/golden/*` byte-frozen corpus — hex files checked in so
-      the userspace Rust decoder can consume the same vectors. M8b.
+- [x] `tests/host/test_sys_dispatch.c` — round-trip through
+      `rpbp_dispatch_frame` with a `capture_tx()` TX sink. 7 cases:
+      HELLO-opens-session, PING→PONG, CMD_REQUEST-pre-HELLO
+      returns EPERM, CMD_REQUEST routing to subsystem stub,
+      RESET_CHANNEL ack, wrong-direction ERROR, unknown-msg_type
+      rejection. Decoupling handled via a new
+      `tests/host/host_stubs.c` shim that stands in for pico-sdk
+      `time_us_64()` + all 7 `cmd_*_dispatch()` handlers.
+- [x] `tests/golden/` corpus scaffold — `gen_golden` utility emits
+      7 canonical wire vectors (HELLO empty, PING ctrl-seq42, SYS
+      ECHO 'Hi!', I2C PROBE, GPIO EDGE event, STREAM_DATA ADC,
+      RESET_CHANNEL events) as `.hex` files. README.md describes
+      the format + cross-impl contract. Initial file population is
+      a one-off CI step (`cmake --build . --target gen-golden`);
+      after that the files are checked in and become the byte-
+      frozen regression fence for both the C encoder and the Rust
+      decoder.
 - [x] Loopback self-test (`SELFTEST` opcode) exercises every bus
       on the live device. 10 tests covered: pin_broker integrity,
       CRC-32C known-vector (RFC 3720), clk_sys range, ADC temp

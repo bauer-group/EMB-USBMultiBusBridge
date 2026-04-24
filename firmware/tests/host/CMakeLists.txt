@@ -33,6 +33,21 @@ target_compile_options(rpbp_portable PRIVATE
     -Wstrict-prototypes -Wmissing-prototypes -Werror
 )
 
+# Richer library that pulls in the dispatch + stream layers. Requires
+# a small `host_stubs.c` shim to stand in for pico-sdk + per-subsystem
+# command handlers. Only the dispatcher round-trip test links this.
+set(_rpbp_dispatch_sources
+    "${RPBP_SRC}/rpbp/rpbp_dispatch.c"
+    "${RPBP_SRC}/rpbp/rpbp_stream.c"
+    "${CMAKE_CURRENT_LIST_DIR}/host_stubs.c"
+)
+add_library(rpbp_dispatch_host STATIC ${_rpbp_dispatch_sources})
+target_link_libraries(rpbp_dispatch_host PUBLIC rpbp_portable)
+target_include_directories(rpbp_dispatch_host PUBLIC "${RPBP_SRC}")
+target_compile_options(rpbp_dispatch_host PRIVATE
+    -Wall -Wextra -Wshadow -Wformat=2
+)
+
 foreach(_test IN ITEMS test_crc32c test_framing test_cbor test_golden)
     add_executable(${_test} ${_test}.c)
     target_link_libraries(${_test} PRIVATE rpbp_portable)
@@ -42,3 +57,23 @@ foreach(_test IN ITEMS test_crc32c test_framing test_cbor test_golden)
     )
     add_test(NAME ${_test} COMMAND ${_test})
 endforeach()
+
+# Dispatcher round-trip test — links the fuller dispatch+stream lib.
+add_executable(test_sys_dispatch test_sys_dispatch.c)
+target_link_libraries(test_sys_dispatch PRIVATE rpbp_dispatch_host)
+target_include_directories(test_sys_dispatch PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
+target_compile_options(test_sys_dispatch PRIVATE
+    -Wall -Wextra -Wshadow -Wformat=2 -Werror
+)
+add_test(NAME test_sys_dispatch COMMAND test_sys_dispatch)
+
+# gen_golden — utility that writes the byte-frozen wire corpus into
+# `firmware/tests/golden/`. Not a test; invoke via `cmake --build
+# . --target gen-golden` and commit the resulting .hex files.
+add_executable(gen_golden gen_golden.c)
+target_link_libraries(gen_golden PRIVATE rpbp_portable)
+add_custom_target(gen-golden
+    COMMAND gen_golden ${CMAKE_CURRENT_LIST_DIR}/../golden
+    DEPENDS gen_golden
+    COMMENT "Generating byte-frozen RPBP wire corpus under tests/golden/"
+)
