@@ -317,3 +317,107 @@ mod tests {
         assert_eq!(st.channel, 2);
     }
 }
+
+/* ═════ Client-level integration tests ═══════════════════════════ */
+
+#[cfg(test)]
+mod client_tests {
+    use super::*;
+    use crate::transport::MockRoundTrip;
+    use crate::rpbp::Status;
+
+    fn setup() -> (Client<MockRoundTrip>, Arc<MockRoundTrip>) {
+        let mock = Arc::new(MockRoundTrip::new());
+        let client = Client::new(mock.clone());
+        (client, mock)
+    }
+
+    #[test]
+    fn apply_state_issues_configure_then_start() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]); // CONFIGURE
+        mock.queue_response(Status::Ok, &[]); // START
+        client.apply_state(30, 1_000_000, 500_000, false, true).unwrap();
+
+        assert_eq!(mock.request_count(), 2);
+        let cfg = mock.pop_request();
+        let start = mock.pop_request();
+        // CONFIGURE: subsys=4, op=0, pin=30
+        assert_eq!(cfg.as_slice()[..3], [0x04, 0x00, 30]);
+        // START: subsys=4, op=2, pin=30
+        assert_eq!(start.as_slice(), &[0x04, 0x02, 30]);
+    }
+
+    #[test]
+    fn apply_state_disabled_issues_stop_not_start() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]); // CONFIGURE
+        mock.queue_response(Status::Ok, &[]); // STOP
+        client.apply_state(30, 1_000_000, 500_000, false, false).unwrap();
+
+        let _cfg = mock.pop_request();
+        let stop = mock.pop_request();
+        assert_eq!(stop.as_slice(), &[0x04, 0x03, 30]); // op=STOP
+    }
+
+    #[test]
+    fn apply_state_forwards_ebusy_from_configure() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::EBusy, &[]);
+        let err = client.apply_state(30, 1_000_000, 500_000, false, true)
+            .unwrap_err();
+        assert_eq!(err, 16); // EBUSY
+        // START should NOT have been queued — only CONFIGURE's request
+        // was submitted before we bailed.
+        assert_eq!(mock.request_count(), 1);
+    }
+
+    #[test]
+    fn set_duty_q16_encoding() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]);
+        client.set_duty_q16(37, 0xABCD).unwrap();
+        let req = mock.pop_request();
+        // subsys=4, op=SET_DUTY (0x01), pin, duty LE16
+        assert_eq!(req.as_slice()[..3], [0x04, 0x01, 37]);
+        assert_eq!(&req.as_slice()[3..5], &[0xCD, 0xAB]);
+    }
+
+    #[test]
+    fn start_stop_roundtrip() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]);
+        mock.queue_response(Status::Ok, &[]);
+        client.start(30).unwrap();
+        client.stop(30).unwrap();
+        assert_eq!(mock.pop_request().as_slice(), &[0x04, 0x02, 30]);
+        assert_eq!(mock.pop_request().as_slice(), &[0x04, 0x03, 30]);
+    }
+
+    #[test]
+    fn get_state_parses_reply() {
+        let (client, mock) = setup();
+        let body: [u8; 10] = [
+            0xE8, 0x03, 0x00, 0x00,
+            0x00, 0x80,
+            1, 0, 2, 1,
+        ];
+        mock.queue_response(Status::Ok, &body);
+        let st = client.get_state(30).unwrap();
+        assert_eq!(st.freq_hz, 1000);
+        assert_eq!(st.duty_q16, 0x8000);
+        assert!(st.running);
+        assert!(!st.invert);
+    }
+
+    #[test]
+    fn encode_state_invert_flag_propagates() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]);
+        mock.queue_response(Status::Ok, &[]);
+        client.apply_state(30, 1_000_000, 250_000, true, true).unwrap();
+        let cfg = mock.pop_request();
+        // flags byte is at offset 3 (after subsys/op/pin).
+        assert_eq!(cfg.as_slice()[3], crate::rpbp::op::pwm::FLAG_INVERT);
+    }
+}

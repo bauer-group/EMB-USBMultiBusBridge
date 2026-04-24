@@ -391,3 +391,123 @@ mod tests {
         assert!(wire::parse_edge_event(&payload).is_err());
     }
 }
+
+/* ═════ Client-level integration tests (MockRoundTrip) ═══════════ */
+
+#[cfg(test)]
+mod client_tests {
+    use super::*;
+    use crate::transport::MockRoundTrip;
+    use crate::rpbp::Status;
+
+    fn setup() -> (Client<MockRoundTrip>, Arc<MockRoundTrip>) {
+        let mock = Arc::new(MockRoundTrip::new());
+        let client = Client::new(mock.clone());
+        (client, mock)
+    }
+
+    #[test]
+    fn list_sends_correct_request_and_parses_response() {
+        let (client, mock) = setup();
+        // 3 pins: 30, 31, 37
+        mock.queue_response(Status::Ok, &[0x03, 30, 31, 37]);
+        let pins = client.list().unwrap();
+        assert_eq!(pins.as_slice(), &[30, 31, 37]);
+
+        let req = mock.pop_request();
+        assert_eq!(req.as_slice(), &[0x03, 0x00]); // subsys=3, opcode=LIST
+    }
+
+    #[test]
+    fn list_empty_response_means_no_pins() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[0x00]); // count=0
+        let pins = client.list().unwrap();
+        assert!(pins.as_slice().is_empty());
+    }
+
+    #[test]
+    fn configure_encodes_pin_dir_pull() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]);
+        client.configure(30, 1, 1).unwrap(); // OUTPUT, PULL_UP
+
+        let req = mock.pop_request();
+        assert_eq!(req.as_slice(), &[0x03, 0x01, 30, 1, 1]);
+    }
+
+    #[test]
+    fn set_high_and_low() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]);
+        mock.queue_response(Status::Ok, &[]);
+        client.set(30, true).unwrap();
+        client.set(31, false).unwrap();
+
+        let r1 = mock.pop_request();
+        let r2 = mock.pop_request();
+        assert_eq!(r1.as_slice(), &[0x03, 0x02, 30, 1]);
+        assert_eq!(r2.as_slice(), &[0x03, 0x02, 31, 0]);
+    }
+
+    #[test]
+    fn get_parses_high_low() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[1]);
+        mock.queue_response(Status::Ok, &[0]);
+        assert!(client.get(30).unwrap());
+        assert!(!client.get(31).unwrap());
+    }
+
+    #[test]
+    fn non_ok_status_translates_to_errno() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::EBusy, &[]);
+        let err = client.set(30, true).unwrap_err();
+        assert_eq!(err, 16); // EBUSY
+    }
+
+    #[test]
+    fn set_mask_roundtrip() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]);
+        client.set_mask(0x00FF, 0x0055).unwrap();
+        let req = mock.pop_request();
+        // subsys=3, opcode=SET_MASK, mask LE64, values LE64
+        assert_eq!(req.as_slice()[0..2], [0x03, 0x04]);
+        assert_eq!(&req.as_slice()[2..10],
+                   &[0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        assert_eq!(&req.as_slice()[10..18],
+                   &[0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn get_mask_parses_le64() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[0xDE, 0xAD, 0xBE, 0xEF, 0, 0, 0, 0]);
+        let v = client.get_mask(0xFFFF).unwrap();
+        assert_eq!(v, 0xEFBEADDE);
+    }
+
+    #[test]
+    fn watch_and_unwatch_roundtrips() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[]);
+        mock.queue_response(Status::Ok, &[]);
+        client.watch(30, 0x03).unwrap(); // BOTH edges
+        client.unwatch(30).unwrap();
+
+        let r1 = mock.pop_request();
+        let r2 = mock.pop_request();
+        assert_eq!(r1.as_slice(), &[0x03, 0x06, 30, 0x03]);
+        assert_eq!(r2.as_slice(), &[0x03, 0x07, 30]);
+    }
+
+    #[test]
+    fn configure_forwards_enotsup_on_protected_pin() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::ENotSup, &[]);
+        let err = client.configure(0, 0, 0).unwrap_err();
+        assert_eq!(err, 95); // ENOTSUP
+    }
+}

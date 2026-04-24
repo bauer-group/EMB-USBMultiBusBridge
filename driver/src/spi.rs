@@ -318,3 +318,135 @@ mod tests {
         assert_eq!(wire::parse_xfer(&resp).unwrap(), &[0xDE, 0xAD, 0xBE, 0xEF]);
     }
 }
+
+/* ═════ Client-level integration tests ═══════════════════════════ */
+
+#[cfg(test)]
+mod client_tests {
+    use super::*;
+    use crate::transport::MockRoundTrip;
+    use crate::rpbp::Status;
+
+    fn setup(inst: u8) -> (Client<MockRoundTrip>, Arc<MockRoundTrip>) {
+        let mock = Arc::new(MockRoundTrip::new());
+        let client = Client::new(mock.clone(), inst);
+        (client, mock)
+    }
+
+    #[test]
+    fn set_mode_0_through_3_encoding() {
+        let (client, mock) = setup(0);
+        for mode in [Mode::Mode0, Mode::Mode1, Mode::Mode2, Mode::Mode3] {
+            mock.queue_response(Status::Ok, &[]);
+            client.set_mode(mode).unwrap();
+        }
+        let expected: [u8; 4] = [
+            0, // mode 0
+            crate::rpbp::op::spi::MODE_CPHA,
+            crate::rpbp::op::spi::MODE_CPOL,
+            crate::rpbp::op::spi::MODE_CPHA | crate::rpbp::op::spi::MODE_CPOL,
+        ];
+        for want in expected {
+            let req = mock.pop_request();
+            assert_eq!(req.as_slice()[..2], [0x02, 0x01]); // subsys=SPI, op=SET_MODE
+            assert_eq!(req.as_slice()[3], want);
+        }
+    }
+
+    #[test]
+    fn set_freq_and_get_freq_roundtrip() {
+        let (client, mock) = setup(1);
+        mock.queue_response(Status::Ok, &[]);
+        mock.queue_response(Status::Ok, &8_000_000u32.to_le_bytes());
+        client.set_freq(8_000_000).unwrap();
+        assert_eq!(client.get_freq().unwrap(), 8_000_000);
+    }
+
+    #[test]
+    fn xfer_full_duplex() {
+        let (client, mock) = setup(0);
+        // reply: rx_len=3 + 3 bytes
+        mock.queue_response(Status::Ok, &[0x03, 0x00, 0xAA, 0xBB, 0xCC]);
+        let rx = client.xfer(30, &[0x11, 0x22, 0x33], 3, false).unwrap();
+        assert_eq!(rx.as_slice(), &[0xAA, 0xBB, 0xCC]);
+
+        let req = mock.pop_request();
+        // subsys=SPI, op=XFER, inst=0, cs=30, flags=0, rsv=0, tx_len=3, rx_len=3, tx...
+        assert_eq!(req.as_slice()[..2], [0x02, 0x00]);
+        assert_eq!(req.as_slice()[2], 0); // instance
+        assert_eq!(req.as_slice()[3], 30); // cs_pin
+        assert_eq!(req.as_slice()[4], 0); // no HOLD_CS
+        assert_eq!(&req.as_slice()[6..8], &[0x03, 0x00]); // tx_len LE16
+        assert_eq!(&req.as_slice()[8..10], &[0x03, 0x00]); // rx_len LE16
+    }
+
+    #[test]
+    fn xfer_hold_cs_sets_flag() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+        client.xfer(30, &[0x11], 0, true).unwrap();
+        let req = mock.pop_request();
+        assert_eq!(req.as_slice()[4], crate::rpbp::op::spi::FLAG_HOLD_CS);
+    }
+
+    #[test]
+    fn xfer_message_holds_cs_until_last_xfer() {
+        let (client, mock) = setup(0);
+        // Three xfers: first two should HOLD_CS, third should release.
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+
+        let xfers = [
+            (&[0xAA][..], 0u16, false),
+            (&[0xBB][..], 0u16, false),
+            (&[0xCC][..], 0u16, false),
+        ];
+        client.xfer_message(30, &xfers).unwrap();
+
+        let r1 = mock.pop_request();
+        let r2 = mock.pop_request();
+        let r3 = mock.pop_request();
+        assert_eq!(r1.as_slice()[4], crate::rpbp::op::spi::FLAG_HOLD_CS);
+        assert_eq!(r2.as_slice()[4], crate::rpbp::op::spi::FLAG_HOLD_CS);
+        assert_eq!(r3.as_slice()[4], 0); // last xfer releases CS
+    }
+
+    #[test]
+    fn xfer_message_cs_change_true_forces_release_mid_message() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+
+        // Two xfers; first asks for CS change mid-message.
+        let xfers = [
+            (&[0xAA][..], 0u16, true),  // cs_change=true → release after
+            (&[0xBB][..], 0u16, false),
+        ];
+        client.xfer_message(30, &xfers).unwrap();
+
+        let r1 = mock.pop_request();
+        assert_eq!(r1.as_slice()[4], 0); // no HOLD_CS because cs_change forced release
+    }
+
+    #[test]
+    fn cs_assert_and_release() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::Ok, &[]);
+        mock.queue_response(Status::Ok, &[]);
+        client.cs_assert(30).unwrap();
+        client.cs_release(30).unwrap();
+        let r1 = mock.pop_request();
+        let r2 = mock.pop_request();
+        assert_eq!(r1.as_slice(), &[0x02, 0x04, 30]);
+        assert_eq!(r2.as_slice(), &[0x02, 0x05, 30]);
+    }
+
+    #[test]
+    fn non_ok_status_propagates() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::EBusy, &[]);
+        let err = client.set_freq(1_000_000).unwrap_err();
+        assert_eq!(err, 16); // EBUSY
+    }
+}

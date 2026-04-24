@@ -372,3 +372,122 @@ mod tests {
         assert!(!out[0x51]);
     }
 }
+
+/* ═════ Client-level integration tests ═══════════════════════════ */
+
+#[cfg(test)]
+mod client_tests {
+    use super::*;
+    use crate::transport::MockRoundTrip;
+    use crate::rpbp::Status;
+
+    fn setup(bus: u8) -> (Client<MockRoundTrip>, Arc<MockRoundTrip>) {
+        let mock = Arc::new(MockRoundTrip::new());
+        let client = Client::new(mock.clone(), bus);
+        (client, mock)
+    }
+
+    #[test]
+    fn probe_addr_happy_and_enodev() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::Ok, &[]);
+        mock.queue_response(Status::ENoDev, &[]);
+        assert!(client.probe_addr(0x50).is_ok());
+        assert_eq!(client.probe_addr(0x51).unwrap_err(), 19); // ENODEV
+    }
+
+    #[test]
+    fn scan_populates_bitmap() {
+        let (client, mock) = setup(0);
+        let mut bitmap = [0u8; 16];
+        bitmap[0x44 / 8] = 1 << (0x44 % 8);
+        mock.queue_response(Status::Ok, &bitmap);
+        let found = client.scan().unwrap();
+        assert!(found[0x44]);
+        assert!(!found[0x50]);
+    }
+
+    #[test]
+    fn xfer_write_emits_no_rx_data() {
+        let (client, mock) = setup(1);
+        mock.queue_response(Status::Ok, &[0x00, 0x00]); // rx_len=0
+        let res = client.xfer_msg(0x48, Direction::Write(&[0xAB, 0xCD]), false).unwrap();
+        assert!(matches!(res, MsgResult::Wrote));
+
+        let req = mock.pop_request();
+        // subsys=1, op=XFER, bus=1, addr=0x48, flags=0, tx_len=2, rx_len=0, tx[0xAB, 0xCD]
+        assert_eq!(req.as_slice()[..4], [0x01, 0x01, 1, 0x48]);
+        assert_eq!(req.as_slice()[4], 0x00); // no NO_STOP
+        assert_eq!(&req.as_slice()[5..7], &[0x02, 0x00]);
+        assert_eq!(&req.as_slice()[7..9], &[0x00, 0x00]);
+        assert_eq!(&req.as_slice()[9..11], &[0xAB, 0xCD]);
+    }
+
+    #[test]
+    fn xfer_read_returns_rx_bytes() {
+        let (client, mock) = setup(0);
+        // reply: rx_len=3, then 3 bytes
+        mock.queue_response(Status::Ok, &[0x03, 0x00, 0x11, 0x22, 0x33]);
+        let res = client.xfer_msg(0x50, Direction::Read(3), false).unwrap();
+        match res {
+            MsgResult::Read(data) => assert_eq!(data.as_slice(), &[0x11, 0x22, 0x33]),
+            _ => panic!("expected Read"),
+        }
+    }
+
+    #[test]
+    fn xfer_no_stop_flag_is_set_when_requested() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+        client.xfer_msg(0x50, Direction::Write(&[0xAA]), true).unwrap();
+        let req = mock.pop_request();
+        assert_eq!(req.as_slice()[4], crate::rpbp::op::i2c::FLAG_NO_STOP);
+    }
+
+    #[test]
+    fn xfer_msg_list_coalesces_write_then_read() {
+        let (client, mock) = setup(0);
+        // Two responses: first is write (rx_len=0), second is read.
+        mock.queue_response(Status::Ok, &[0x00, 0x00]);
+        mock.queue_response(Status::Ok, &[0x02, 0x00, 0xAA, 0xBB]);
+
+        let msgs = [
+            (0x50u8, Direction::Write(&[0x30][..])),
+            (0x50u8, Direction::Read(2)),
+        ];
+        let results = client.xfer_msg_list(&msgs).unwrap();
+        assert_eq!(results.len(), 2);
+        // First message must have had FLAG_NO_STOP set.
+        let r1 = mock.pop_request();
+        assert_eq!(r1.as_slice()[4], crate::rpbp::op::i2c::FLAG_NO_STOP);
+        // Second message must have had flags=0 (normal STOP).
+        let r2 = mock.pop_request();
+        assert_eq!(r2.as_slice()[4], 0);
+    }
+
+    #[test]
+    fn set_freq_encodes_le32() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::Ok, &[]);
+        client.set_freq(400_000).unwrap();
+        let req = mock.pop_request();
+        // subsys=1, op=SET_FREQ, bus=0, freq LE32
+        assert_eq!(req.as_slice()[..3], [0x01, 0x03, 0x00]);
+        assert_eq!(&req.as_slice()[3..7], &400_000u32.to_le_bytes());
+    }
+
+    #[test]
+    fn get_freq_parses_le32() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::Ok, &100_000u32.to_le_bytes());
+        assert_eq!(client.get_freq().unwrap(), 100_000);
+    }
+
+    #[test]
+    fn non_ok_status_propagates_as_errno() {
+        let (client, mock) = setup(0);
+        mock.queue_response(Status::ETimedout, &[]);
+        let err = client.probe_addr(0x50).unwrap_err();
+        assert_eq!(err, 110); // ETIMEDOUT
+    }
+}

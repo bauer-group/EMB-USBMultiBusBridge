@@ -395,3 +395,112 @@ mod tests {
         assert_eq!(tick.samples.as_slice(), &[100, 200, 300, 400]);
     }
 }
+
+/* ═════ Client-level integration tests ═══════════════════════════ */
+
+#[cfg(test)]
+mod client_tests {
+    use super::*;
+    use crate::transport::MockRoundTrip;
+    use crate::rpbp::Status;
+
+    fn setup() -> (Client<MockRoundTrip>, Arc<MockRoundTrip>) {
+        let mock = Arc::new(MockRoundTrip::new());
+        let client = Client::new(mock.clone());
+        (client, mock)
+    }
+
+    #[test]
+    fn read_returns_raw_and_mv() {
+        let (client, mock) = setup();
+        // raw=0x0800 (2048), mv=1650
+        mock.queue_response(Status::Ok, &[0x00, 0x08, 0x72, 0x06]);
+        let (raw, mv) = client.read(2).unwrap();
+        assert_eq!(raw, 0x0800);
+        assert_eq!(mv, 1650);
+
+        let req = mock.pop_request();
+        // subsys=ADC=5, op=READ=0, channel=2
+        assert_eq!(req.as_slice(), &[0x05, 0x00, 2]);
+    }
+
+    #[test]
+    fn read_many_returns_samples_in_channel_order() {
+        let (client, mock) = setup();
+        // count=3, then 3 ManySamples of 5 bytes each
+        let mut resp = KVec::new();
+        resp.push(3, GFP_KERNEL).unwrap();
+        for (ch, raw, mv) in [(0u8, 100u16, 250u16),
+                              (1, 200, 500),
+                              (2, 300, 750)] {
+            resp.push(ch, GFP_KERNEL).unwrap();
+            resp.extend_from_slice(&raw.to_le_bytes(), GFP_KERNEL).unwrap();
+            resp.extend_from_slice(&mv.to_le_bytes(), GFP_KERNEL).unwrap();
+        }
+        mock.queue_response(Status::Ok, resp.as_slice());
+
+        let samples = client.read_many(0b0111).unwrap();
+        assert_eq!(samples.len(), 3);
+        assert_eq!(samples[0].channel, 0);
+        assert_eq!(samples[0].raw, 100);
+        assert_eq!(samples[2].mv, 750);
+    }
+
+    #[test]
+    fn vref_mv_returns_le32() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &3300u32.to_le_bytes());
+        assert_eq!(client.vref_mv().unwrap(), 3300);
+    }
+
+    #[test]
+    fn temp_cdeg_returns_signed_cdeg() {
+        let (client, mock) = setup();
+        // 2500 cdegC = 25.00 °C
+        mock.queue_response(Status::Ok, &2500i16.to_le_bytes());
+        assert_eq!(client.temp_cdeg().unwrap(), 2500);
+        // Negative temperatures also round-trip.
+        mock.queue_response(Status::Ok, &(-500i16).to_le_bytes());
+        assert_eq!(client.temp_cdeg().unwrap(), -500);
+    }
+
+    #[test]
+    fn stream_start_and_stop_roundtrip() {
+        let (client, mock) = setup();
+        // Start reply: actual_channel=16 LE16
+        mock.queue_response(Status::Ok, &[0x10, 0x00]);
+        mock.queue_response(Status::Ok, &[]);
+
+        let ch = client.stream_start(16, 0b0001, 1000).unwrap();
+        assert_eq!(ch, 16);
+        client.stream_stop(16).unwrap();
+
+        let start_req = mock.pop_request();
+        let stop_req  = mock.pop_request();
+        // start: subsys=5, op=4, channel LE16, mask, rsv=0, rate LE32
+        assert_eq!(start_req.as_slice()[..2], [0x05, 0x04]);
+        assert_eq!(&start_req.as_slice()[2..4], &[0x10, 0x00]);
+        assert_eq!(start_req.as_slice()[4], 0b0001);
+        // stop: subsys=5, op=5, channel LE16
+        assert_eq!(stop_req.as_slice(), &[0x05, 0x05, 0x10, 0x00]);
+    }
+
+    #[test]
+    fn stream_start_ebusy_on_second_open() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::Ok, &[0x10, 0x00]);
+        mock.queue_response(Status::EBusy, &[]);
+
+        client.stream_start(16, 0b0001, 1000).unwrap();
+        let err = client.stream_start(16, 0b0001, 1000).unwrap_err();
+        assert_eq!(err, 16); // EBUSY
+    }
+
+    #[test]
+    fn read_propagates_enodev_on_invalid_channel() {
+        let (client, mock) = setup();
+        mock.queue_response(Status::ENoDev, &[]);
+        let err = client.read(99).unwrap_err();
+        assert_eq!(err, 19); // ENODEV
+    }
+}
