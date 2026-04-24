@@ -51,11 +51,45 @@ combinations.
 - **Driver M10k**: `driver/TODO.md` tracks per-milestone status with
   explicit R4L-binding gates, and the firmware TODO is updated to
   reflect M9c / M9d closure.
+- **ADR-0007**: FFI bindings as the interim Rust-for-Linux transport.
+  Documents why `driver/src/ffi/` exists (R4L has USB device
+  bindings but not bulk_msg / subsystem registration APIs as of
+  6.18), what it contains, and the per-API upstream-replacement
+  plan that retires each FFI file as the safe binding lands.
+- **Driver M11a..M11e**: FFI scaffolding landed. `src/ffi/bindings.rs`
+  carries hand-written `extern "C"` declarations pinned to Linux
+  6.13 LTS; `src/ffi/shims.c` is a thin C translation unit for
+  kernel inline helpers + struct-field accessors + typed object
+  allocators; `src/ffi/{usb,wait,auxiliary}.rs` wrap the USB core,
+  wait_queue, and parent-device resolution in safe Rust.
+- **Driver M11c**: `core_driver::round_trip` is now a real
+  synchronous bulk-pair transfer (send CMD_REQUEST on OUT, block-
+  read response on IN, validate, correlate seq). `probe()` does
+  the full session: endpoint discovery, HELLO handshake,
+  `CMD_REQUEST{GET_CAPABILITIES}`, `spawn_children`.
+- **Driver M11f..M11j**: all five subsystems register real kernel
+  objects. GPIO via `gpio_chip` → `/dev/gpiochipN`. I²C via
+  `i2c_adapter` → `/dev/i2c-N`. SPI via `spi_controller` +
+  `spidev` → `/dev/spidevX.Y`. PWM via `pwm_chip` →
+  `/sys/class/pwm/pwmchipN/`. IIO (single-shot) via `iio_device`
+  → `/sys/bus/iio/devices/iio:deviceN/`. IIO triggered-buffer
+  streaming is tracked as M12 (needs an async event kthread).
+- **Driver M11k+l**: 85+ KUnit-for-Rust test cases total.
+  `transport::MockRoundTrip` lets every subsystem Client be
+  exercised end-to-end without USB hardware; per-subsystem
+  `client_tests` modules cover every opcode byte-for-byte plus
+  errno propagation (EBUSY, ETIMEDOUT, ENODEV, ENOTSUP).
 
 ### Changed
 
 - ADR-0004 (dual USB configuration) marked as Superseded by ADR-0005
   in the ADR index.
+- Driver status changed from "client-layer complete, kernel-adapter
+  blocked on R4L bindings" to **functionally complete on Linux
+  6.13 LTS+**. All five non-UART / non-CAN subsystems expose their
+  standard `/dev/*` + `/sys/class/*` interfaces; `libgpiod`,
+  `i2c-tools`, `spidev_test`, `pwm-utils`, and `iio_info` work
+  unchanged.
 
 ### Notes
 

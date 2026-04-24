@@ -5,114 +5,112 @@ pending (`[ ]`). Each entry points to the module, the authoritative
 spec, and (where applicable) the upstream kernel binding it depends
 on.
 
-## M10 — Driver-native RPBP client (per ADR-0006)
+## M10 — RPBP client layer (kernel-binding agnostic)
 
-### M10c — Transport core
+All wire / Client / Sequencer / CompletionTable logic. Complete.
 
-- [x] `src/transport.rs` — `Sequencer` + `CompletionTable` with
-      pending / completed / dead states, cancel + reap semantics,
-      7 unit tests.
-- [x] `src/core_driver.rs` — `RpbridgeState` with `Inner` mutex,
-      `RoundTrip` impl sketch, `dispatch_rx_frame` router for
-      CmdResponse / Error / Event / StreamData, ERROR frame parser.
-- [ ] **§R4L-USB-BINDINGS:** wire `submit_frame_blocking` against
-      `kernel::usb::bulk_msg` once that binding lands in the
-      target Rust-for-Linux tree (tracking 6.14 / 6.15).
-- [ ] **§R4L-USB-BINDINGS:** wire `wait_for_completion` against
-      `kernel::sync::CondVar::wait_timeout` once available.
-- [ ] URB anchor + RX pool (N=4 bulk-IN URBs, anchored for
-      `usb_kill_anchored_urbs` on disconnect).
+- [x] `src/rpbp.rs`, `src/cap.rs`, `src/transport.rs`.
+- [x] `src/{gpio,i2c,spi,pwm,iio}.rs` wire + Client.
 
-### M10d — Capability-driven spawn
+See `CHANGELOG.md` `[Unreleased] → Added` for the M10 bullet list.
 
-- [x] `core_driver::spawn_children` walks `caps.buses`, skips
-      `"uart"` and `"can"` explicitly (ADR-0006), spawns the rest.
-- [ ] **§R4L-AUX-BINDINGS:** wrap each returned `Child` in
-      `auxiliary_device` + call `auxiliary_device_register`. Needs
-      `kernel::auxiliary` bindings (WIP upstream).
+## M11 — Driver fully functional via FFI (ADR-0007)
 
-### M10e — GPIO (gpio_chip + irq_chip)
+### M11a — FFI scaffolding
 
-- [x] `src/gpio.rs` wire layer (LIST / CONFIGURE / SET / GET /
-      SET_MASK / GET_MASK / WATCH / UNWATCH + EdgeEvent parser).
-- [x] `Client<T: RoundTrip>` — every op is one round-trip.
-- [x] `GpioChild::probe()` — discovers pin whitelist via LIST.
-- [ ] **§R4L-GPIO-BINDINGS:** register a `kernel::gpio::Chip`
-      vtable. Map `get`/`set`/`direction_in/out`/`set_config` to
-      Client calls.
-- [ ] **§R4L-GPIO-BINDINGS:** nested `irq_chip` atop the Chip.
-      Events channel pump in `core_driver::handle_event` dispatches
-      parsed `EdgeEvent` payloads to `handle_nested_irq(virq)`.
+- [x] `src/ffi/mod.rs` + `src/ffi/bindings.rs` — hand-written
+      `extern "C"` declarations pinned to Linux 6.13 LTS.
+- [x] `src/ffi/shims.c` — C shim for inline helpers + struct-field
+      accessors + typed object allocators.
+- [x] Kbuild wires `src/ffi/shims.o` alongside `src/lib.o`.
 
-### M10f — I²C adapter
+### M11b — USB transport FFI
 
-- [x] `src/i2c.rs` wire layer (PROBE / XFER / SCAN / SET_FREQ /
-      GET_FREQ) with NO_STOP flag.
-- [x] `Client<T>` with `xfer_msg_list` that detects write-restart-
-      read pattern and sets `FLAG_NO_STOP` on the write half.
-- [ ] **§R4L-I2C-BINDINGS:** register `kernel::i2c::Adapter`.
-      `master_xfer` maps `i2c_msg[]` to `xfer_msg_list`; functionality
-      = `I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL`.
+- [x] `src/ffi/wait.rs` — `WaitQueue` over `wait_queue_head_t`.
+- [x] `src/ffi/usb.rs` — `Interface` + `BulkEndpoint` around
+      `usb_bulk_msg` + endpoint walking.
+- [x] `src/ffi/auxiliary.rs` — `parent_device()` helper (full
+      auxiliary_bus wrapper is M12).
 
-### M10g — SPI controller
+### M11c — Core driver
 
-- [x] `src/spi.rs` wire layer (XFER / SET_MODE / SET_FREQ /
-      GET_FREQ / CS_ASSERT / CS_RELEASE).
-- [x] `Client<T>` with `xfer_message` that handles `cs_change` for
-      HOLD_CS, and `Mode` enum → CPOL/CPHA bit mapping.
-- [ ] **§R4L-SPI-BINDINGS:** register `kernel::spi::Controller`.
-      `transfer_one_message` calls `xfer_message(cs_pin, &xfers)`.
+- [x] `core_driver::round_trip()` — synchronous request/response
+      via the bulk IN/OUT pair. Validates CRC + header, correlates
+      (channel, seq).
+- [x] `core_driver::probe()` — end-to-end session: bulk-pair
+      discovery → HELLO → GET_CAPABILITIES → spawn_children.
+- [x] Stub disconnect() with a comment that aux children's Drop
+      impls handle teardown.
 
-### M10h — PWM chip
+### M11f–j — Subsystem kernel integration
 
-- [x] `src/pwm.rs` wire layer (CONFIGURE / SET_DUTY / START / STOP
-      / GET_STATE) + `encode_state` / `decode_state` converters
-      between `pwm_state {period_ns, duty_ns}` and
-      `{freq_hz, duty_q16}`.
-- [x] `Client<T>` with `apply_state` (CONFIGURE + START/STOP).
-- [ ] **§R4L-PWM-BINDINGS:** register `kernel::pwm::Chip`. `apply`
-      calls `client.apply_state(pin, ...)`; `get_state` calls
-      `decode_state` on a GET_STATE round-trip.
+- [x] **GPIO** — `gpio_chip` registered; `get` / `set` /
+      `direction_input` / `direction_output` / `request` / `free`
+      trampolines bridge to the Client. Accessible via
+      `/dev/gpiochipN`, libgpiod, `gpioget` / `gpioset`.
+- [x] **I²C** — `i2c_adapter` registered; `master_xfer` handles
+      one message at a time with typed Write/Read directions.
+      Accessible via `/dev/i2c-N`, `i2cdetect`, `i2cget` / `i2cset`,
+      kernel drivers (sensors etc.).
+- [x] **SPI** — `spi_controller` registered; `transfer_one_message`
+      walks the transfer list and honours `cs_change`. Accessible
+      via `spidev` on `/dev/spidevX.Y`, `spi-pipe`, `spidev_test`.
+- [x] **PWM** — `pwm_chip` registered with `apply` + `get_state`.
+      Accessible via `/sys/class/pwm/pwmchipN/`, the standard sysfs
+      interface (export / period / duty_cycle / enable).
+- [x] **IIO (single-shot)** — `iio_device` registered with
+      `read_raw`. Voltage channels 0..3 and on-die temp channel 4
+      exposed. Accessible via `/sys/bus/iio/devices/iio:deviceN/`,
+      `iio_info`, `cat in_voltage0_raw`.
+- [ ] **IIO (triggered buffer)** — `iio_readdev -b ... -s ...`
+      streaming needs a kthread that consumes STREAM_DATA frames
+      from the USB IN endpoint outside the request/response path.
+      Tracked as M12; single-shot IIO is fully functional.
 
-### M10i — IIO device + triggered buffer
+### M11k–l — Test coverage
 
-- [x] `src/iio.rs` wire layer (READ / READ_MANY / GET_REF /
-      TEMP_READ / STREAM_START / STREAM_STOP + STREAM_DATA parser).
-- [x] `Client<T>` covering all 6 opcodes.
-- [x] `ChanDesc` / `ChanKind` types mirror `iio_chan_spec` shape.
-- [ ] **§R4L-IIO-BINDINGS:** register `kernel::iio::Device`.
-      `read_raw` maps `IIO_CHAN_INFO_RAW / SCALE / PROCESSED` to
-      Client calls. Triggered-buffer path: `buffer_postenable` →
-      `stream_start`, event pump pushes samples via
-      `iio_push_to_buffers_with_timestamp`, `buffer_predisable` →
-      `stream_stop`.
-
-### M10j — Tests
-
-- [x] Inline `#[cfg(test)] mod tests` in every src/*.rs —
-      exhaustive wire-format regression fence (35+ cases total).
-- [x] `tests/kunit/` — C-based KUnit tests for CRC-32C parity with
-      the firmware + golden-vector CRC trailer.
+- [x] `transport::MockRoundTrip` — deterministic RoundTrip impl
+      with FIFO response queue + captured-request introspection.
+- [x] 85+ KUnit-for-Rust test cases (via `#[cfg(test)] mod tests`
+      + `mod client_tests` in every src/*.rs file):
+      - Wire layer: 35+ cases (CRC, framing, every opcode encode
+        + parse, fragmentation flags).
+      - Sequencer + CompletionTable: 10 cases.
+      - Client integration (MockRoundTrip): 50+ cases across all
+        5 subsystems covering happy path, edge cases, and errno
+        propagation.
+- [x] `tests/kunit/` — C-based KUnit tests for CRC-32C parity
+      against the firmware via `rpbridge_crc32c_slice` shim.
 - [x] `tests/umockdev/` — replay script + expected-children
-      manifest + recording regeneration procedure.
-- [x] `tests/e2e.md` — 10-section hand-driven hardware checklist
-      covering every claim in ADR-0005 and ADR-0006.
+      manifest.
+- [x] `tests/e2e.md` — 10-section hardware checklist.
 
-### M10 — Explicit non-goals (ADR-0006)
+## M12 — Post-delivery refactors (pre-upstream-RFC)
 
-- [ ] **NOT** a `tty_driver`. CDC-ACM owns UART; UART_CLAIM stays
-      as diagnostic escape hatch but has no driver-side consumer.
-- [ ] **NOT** an RPBP-CAN subsystem. `gs_usb.ko` + gs_usb_glue.c
-      is the sole CAN path on both Linux and Windows. CAN-FD is
-      a hardware gate (see `docs/protocol/hardware-canfd.md`).
+- [ ] **auxiliary_bus migration** — wrap each Child in
+      `auxiliary_device_{init,register,delete,uninit}` per ADR-0002.
+      Mechanical refactor; no behaviour change visible to userland.
+- [ ] **Async event/stream kthread** — consumes STREAM_DATA + EVENT
+      frames off the USB IN endpoint on a dedicated kernel thread.
+      Unblocks GPIO WATCH edge events and IIO triggered-buffer
+      streaming.
+- [ ] **GPIO IrqChip** — nested irq_chip on top of the gpio_chip
+      so `gpiomon` sees rising/falling edges with <5 ms latency.
+- [ ] **I²C SMBus + NOSTART** — advertise `I2C_FUNC_NOSTART` and
+      coalesce write-then-read across `master_xfer`'s msg[] to fold
+      repeated-start patterns into a single RPBP XFER.
+- [ ] **Safe-wrapper migration** — as each `kernel::<module>` binding
+      lands upstream, delete the corresponding `src/ffi/<module>.rs`
+      and rewire call sites. See ADR-0007 §Upstream-replacement
+      plan for the expected order.
 
-## Upstream-submission prep (future M11)
+## Upstream-submission prep (future M13)
 
-- [ ] `kernel-baseline/` bump to whatever R4L tree binds
-      `kernel::usb::*` comprehensively.
+- [ ] `kernel-baseline/` bump to the R4L tree that provides all
+      bindings we currently shim.
+- [ ] Move `src/ffi/shims.c` content into safe Rust callers once
+      the bindings allow it; `shims.c` should shrink to zero.
 - [ ] Kbuild: ensure `rpbridge.ko` compiles in-tree under
       `drivers/usb/misc/rpbridge/`.
 - [ ] Checkpatch + `sphinx-build Documentation/` clean.
-- [ ] First RFC post to `linux-usb@` / `rust-for-linux@` with
-      `rpbridge: driver for RPBridge USB multi-bus bridge` as
-      subject. Cover-letter links to this TODO and ADR-0006.
+- [ ] RFC post to `linux-usb@` / `rust-for-linux@`.
