@@ -6,14 +6,18 @@
  *
  * Wire definitions come from mainline Linux
  * drivers/net/can/usb/gs_usb.c + include/linux/usb/gs_usb.h. We
- * implement the classic-CAN subset (no FD, no timestamps, no
- * listen-only) that covers 100 % of SocketCAN's needs on rev-B.
+ * implement the classic-CAN subset (plus HW_TIMESTAMP when the host
+ * opts in via GS_CAN_MODE_HW_TIMESTAMP) that covers 100 % of
+ * SocketCAN's needs on rev-B. CAN-FD is hardware-gated — see
+ * docs/protocol/hardware-canfd.md and ADR-0006.
  */
 
 #include "gs_usb_glue.h"
 
 #include "peripherals/can.h"
 #include "tusb.h"
+
+#include "pico/time.h"   /* time_us_64() */
 
 #include <string.h>
 
@@ -31,9 +35,23 @@
 #define GS_CAN_MODE_RESET          0u
 #define GS_CAN_MODE_START          1u
 
-/* Feature flags advertised in gs_device_bt_const.feature. Only
- * IDENTIFY is wired through (LED blink request); the rest are
- * informational "advertised capability". */
+/* gs_device_mode.flags (host → device): GS_CAN_MODE_* bitmask
+ * that toggles optional behaviour at can_up time. Only the bits
+ * we act on are named here; the rest are silently ignored. */
+#define GS_CAN_MODE_LISTEN_ONLY            (1u << 0)
+#define GS_CAN_MODE_LOOP_BACK              (1u << 1)
+#define GS_CAN_MODE_TRIPLE_SAMPLE          (1u << 2)
+#define GS_CAN_MODE_ONE_SHOT               (1u << 3)
+#define GS_CAN_MODE_HW_TIMESTAMP           (1u << 4)
+#define GS_CAN_MODE_PAD_PKTS_TO_MAX_PKT    (1u << 7)
+#define GS_CAN_MODE_FD                     (1u << 8)
+#define GS_CAN_MODE_BERR_REPORTING         (1u << 12)
+
+/* Feature flags advertised in gs_device_bt_const.feature. A capability
+ * flag says "the device can deliver this if the host enables it via
+ * gs_device_mode.flags". Only IDENTIFY / USER_ID / HW_TIMESTAMP are
+ * supported on rev-B; the rest are reserved for future silicon
+ * (see ADR-0006). */
 #define GS_CAN_FEATURE_LISTEN_ONLY         (1u << 0)
 #define GS_CAN_FEATURE_LOOP_BACK           (1u << 1)
 #define GS_CAN_FEATURE_TRIPLE_SAMPLE       (1u << 2)
@@ -42,6 +60,8 @@
 #define GS_CAN_FEATURE_IDENTIFY            (1u << 5)
 #define GS_CAN_FEATURE_USER_ID             (1u << 6)
 #define GS_CAN_FEATURE_PAD_PKTS_TO_MAX_PKT (1u << 7)
+#define GS_CAN_FEATURE_FD                  (1u << 8)
+#define GS_CAN_FEATURE_BERR_REPORTING      (1u << 12)
 
 struct __attribute__((packed)) gs_device_config {
     uint8_t  reserved1;
@@ -78,6 +98,13 @@ struct __attribute__((packed)) gs_device_mode {
     uint32_t flags;
 };
 
+/* gs_host_frame. Without HW_TIMESTAMP the wire size is 20 bytes
+ * (12 header + 8 data). With HW_TIMESTAMP the host expects a 4-byte
+ * little-endian µs counter appended right after the data payload,
+ * making the frame 24 bytes. Mainline Linux computes the expected
+ * frame size at interface up time and reads exactly that many
+ * bytes per bulk packet. We store the wider form unconditionally
+ * and send only the number of bytes the host actually asked for. */
 struct __attribute__((packed)) gs_host_frame {
     uint32_t echo_id;
     uint32_t can_id;
@@ -86,7 +113,11 @@ struct __attribute__((packed)) gs_host_frame {
     uint8_t  flags;
     uint8_t  reserved;
     uint8_t  data[8];
+    uint32_t timestamp_us;   /* only on the wire when g_hw_ts_enabled */
 };
+
+#define GS_HOST_FRAME_SZ_CLASSIC    20u   /* without timestamp trailer */
+#define GS_HOST_FRAME_SZ_HWTS       24u   /* with timestamp trailer    */
 
 #define GS_USB_ECHO_ID_RX       0xFFFFFFFFu
 
@@ -148,6 +179,15 @@ static bool echo_pop(uint32_t *id)
     return true;
 }
 
+/* Host-enabled HW timestamp trailer. The bit is set by the host in
+ * gs_device_mode.flags during BREQ_MODE(START). Cleared on RESET. */
+static volatile bool g_hw_ts_enabled;
+
+static inline uint32_t host_frame_size(void)
+{
+    return g_hw_ts_enabled ? GS_HOST_FRAME_SZ_HWTS : GS_HOST_FRAME_SZ_CLASSIC;
+}
+
 /* ───── can2040 → gs_usb frame translation (called from PIO IRQ) ─────── */
 
 static void can_rx_cb(uint32_t notify, const struct can_hw_frame *msg)
@@ -157,6 +197,11 @@ static void can_rx_cb(uint32_t notify, const struct can_hw_frame *msg)
     f.can_dlc = (uint8_t)msg->dlc;
     f.channel = 0u;
     memcpy(f.data, msg->data, sizeof(f.data));
+    /* time_us_64() on RP2350 is IRQ-safe: it reads the TIMER peripheral's
+     * atomic 64-bit snapshot register. Truncating to 32 bits gives us
+     * ~71.6 min of unambiguous range — matches mainline gs_usb, which
+     * also advertises a 32-bit µs counter. */
+    f.timestamp_us = (uint32_t)time_us_64();
 
     if (notify & CAN_HW_NOTIFY_TX) {
         /* TX-complete: echo the frame with the host-assigned echo_id
@@ -214,10 +259,18 @@ static bool handle_control_setup(uint8_t rhport, void const *req_void)
          * Linux's `can_update_spt()`. Values mirror mcp251x-ish
          * ranges and are sized so can2040 can be configured at any
          * standard automotive rate (100k / 125k / 250k / 500k / 1M).
+         *
+         * Advertising HW_TIMESTAMP tells mainline gs_usb to read
+         * the 4-byte µs trailer from every frame (see struct
+         * gs_host_frame_hw_timestamp in mainline). The host still
+         * has to opt in at can_up time via GS_CAN_MODE_HW_TIMESTAMP
+         * in gs_device_mode.flags — until then we keep sending
+         * 20-byte classic frames.
          */
         static struct gs_device_bt_const bt = {
             .feature     = GS_CAN_FEATURE_IDENTIFY |
-                           GS_CAN_FEATURE_USER_ID,
+                           GS_CAN_FEATURE_USER_ID  |
+                           GS_CAN_FEATURE_HW_TIMESTAMP,
             .fclk_can    = GS_USB_FCLK_CAN,
             .tseg1_min   = 1,
             .tseg1_max   = 16,
@@ -259,8 +312,16 @@ static bool handle_control_setup(uint8_t rhport, void const *req_void)
             bool ok = tud_control_xfer(rhport, req,
                                        &mode_buf, sizeof(mode_buf));
             if (ok) {
-                if (mode_buf.mode == GS_CAN_MODE_START)   can_hw_start();
-                else if (mode_buf.mode == GS_CAN_MODE_RESET) can_hw_stop();
+                if (mode_buf.mode == GS_CAN_MODE_START) {
+                    /* Latch per-session opt-ins. HW_TIMESTAMP is the only
+                     * optional bit we honour today; the rest we advertise
+                     * as supported in BT_CONST only if silicon exists. */
+                    g_hw_ts_enabled = (mode_buf.flags & GS_CAN_MODE_HW_TIMESTAMP) != 0u;
+                    can_hw_start();
+                } else if (mode_buf.mode == GS_CAN_MODE_RESET) {
+                    g_hw_ts_enabled = false;
+                    can_hw_stop();
+                }
             }
             return ok;
         }
@@ -271,8 +332,19 @@ static bool handle_control_setup(uint8_t rhport, void const *req_void)
         /* Host asks us to blink the LED. Acknowledge only. */
         return tud_control_xfer(rhport, req, NULL, 0);
 
+    case GS_USB_BREQ_TIMESTAMP: {
+        /* Host clock-anchor read: IN request returning the current
+         * device µs counter as LE u32. Mainline gs_usb uses this to
+         * compute an initial offset before relying on per-frame
+         * timestamps. Wraps every ~71.6 min (32-bit µs). */
+        if (req->bmRequestType_bit.direction != TUSB_DIR_IN)
+            return false;
+        static uint32_t ts_buf;
+        ts_buf = (uint32_t)time_us_64();
+        return tud_control_xfer(rhport, req, &ts_buf, sizeof(ts_buf));
+    }
+
     case GS_USB_BREQ_BERR:
-    case GS_USB_BREQ_TIMESTAMP:
     default:
         return false;
     }
@@ -284,6 +356,7 @@ void gs_usb_glue_init(void)
 {
     g_rx_head = g_rx_tail = 0u;
     g_echo_head = g_echo_tail = 0u;
+    g_hw_ts_enabled = false;
     can_hw_set_rx_cb(can_rx_cb);
 }
 
@@ -305,30 +378,31 @@ void gs_usb_glue_poll(void)
 {
     if (!tud_vendor_n_mounted(VENDOR_IF_CAN)) return;
 
+    const uint32_t wire_sz = host_frame_size();
+
     /* 1. Drain RX ring into the IN FIFO — one frame per poll keeps
      *    the latency reasonable without starving other subsystems. */
     struct gs_host_frame out;
     if (rx_ring_pop(&out)) {
         uint32_t free_bytes = tud_vendor_n_write_available(VENDOR_IF_CAN);
-        if (free_bytes >= sizeof(out)) {
-            tud_vendor_n_write(VENDOR_IF_CAN, &out, sizeof(out));
+        if (free_bytes >= wire_sz) {
+            tud_vendor_n_write(VENDOR_IF_CAN, &out, wire_sz);
             tud_vendor_n_write_flush(VENDOR_IF_CAN);
         } else {
-            /* No room — re-queue at the tail so we don't lose it. */
-            /* Simple implementation: push back by decrementing tail;
-             * safe because this poll is the only consumer. */
+            /* No room — re-queue at the tail so we don't lose it.
+             * Safe because this poll is the only consumer. */
             g_rx_tail = (uint16_t)((g_rx_tail - 1u) & (GS_RX_RING_SLOTS - 1u));
             g_rx_ring[g_rx_tail] = out;
         }
     }
 
-    /* 2. Consume bulk OUT frames from the host. gs_usb always sends
-     *    one complete `gs_host_frame` per bulk packet, so read in
-     *    fixed-size chunks. */
-    while (tud_vendor_n_available(VENDOR_IF_CAN) >= sizeof(struct gs_host_frame)) {
-        struct gs_host_frame fi;
-        uint32_t got = tud_vendor_n_read(VENDOR_IF_CAN, &fi, sizeof(fi));
-        if (got != sizeof(fi)) break;
+    /* 2. Consume bulk OUT frames from the host. The wire size is the
+     *    same in both directions for a given mode — mainline gs_usb
+     *    always sends one complete frame per bulk packet. */
+    while (tud_vendor_n_available(VENDOR_IF_CAN) >= wire_sz) {
+        struct gs_host_frame fi = {0};
+        uint32_t got = tud_vendor_n_read(VENDOR_IF_CAN, &fi, wire_sz);
+        if (got != wire_sz) break;
 
         struct can_hw_frame tx = {
             .id  = fi.can_id,
@@ -344,5 +418,10 @@ void gs_usb_glue_poll(void)
             uint32_t drop;
             echo_pop(&drop);
         }
+        /* Host-supplied timestamp (fi.timestamp_us when HW_TS is on)
+         * is intentionally ignored: it is echo-only in gs_usb and we
+         * don't need it — the TX-complete frame we emit back will
+         * carry our own device timestamp, which is what SocketCAN
+         * correlates against. */
     }
 }

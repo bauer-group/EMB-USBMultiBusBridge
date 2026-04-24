@@ -71,7 +71,7 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  20
+#define RPBRIDGE_FEATURE_COUNT  21
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
@@ -93,7 +93,8 @@ static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "adc.temp",            /* on-chip temperature sensor                       */
     "adc.stream",          /* continuous ADC sampling via dynamic RPBP channel */
     "can.classic",         /* CAN 2.0B via can2040 (PIO)                       */
-    "can.gs-usb",           /* SocketCAN-compatible on vendor interface 1       */
+    "can.gs-usb",          /* SocketCAN-compatible on vendor interface 1       */
+    "can.hw-timestamp",    /* gs_usb GS_CAN_FEATURE_HW_TIMESTAMP (µs, 32-bit)  */
 };
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
