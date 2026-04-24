@@ -176,9 +176,21 @@ authoritative spec section.
       gpio_irq_trampoline, edges land in the io_control GPIO ring,
       main-loop pump emits RPBP EVENT frames on channel 1 with
       payload `[subsys=0x03][event=0x00][pin][level][ts_us LE u32]`.
-- [ ] RPBP stream channels (dynamic channel alloc + credit accounting
-      + STREAM_DATA payload framing) — scaffold only; ADC IIO and
-      logic-capture producers land in M6b.
+- [x] `src/rpbp/rpbp_stream.{c,h}` — dynamic channel registry
+      (up to 4 simultaneous streams, each tracked in a slot with
+      credit counter + TX seq + drop stats). `rpbp_stream_open(ch)`
+      / `rpbp_stream_close(ch)` / `rpbp_stream_send_frame(ch, …)`.
+      STREAM_CREDIT dispatcher hooks `rpbp_stream_on_credit()` into
+      the registry so host-side credit refills land directly.
+- [x] ADC IIO-streamer on Core 1 — `io_adc_sample` SPSC ring + a
+      drift-free 1 µs-aligned sampler in `io_control`'s core1_entry.
+      Core 0's `io_control_poll()` drains the ring + emits
+      STREAM_DATA frames on the active stream channel.
+- [x] `ADC_STREAM_START` (0x04) / `ADC_STREAM_STOP` (0x05) opcodes
+      in `cmd_adc.c`; rate clamped to 1..10 000 Hz (USB-FS bandwidth
+      ceiling). Payload format documented in
+      `docs/protocol/subsystems/adc.md` §STREAM_START.
+- [x] Capability-map feature flag `"adc.stream"`.
 
 ## M7 — Windows binding
 

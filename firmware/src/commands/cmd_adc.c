@@ -11,6 +11,8 @@
 #include "peripherals/adc.h"
 #include "rpbp/rpbp.h"
 #include "rpbp/rpbp_dispatch.h"
+#include "rpbp/rpbp_stream.h"
+#include "io_control/io_control.h"
 
 #include <string.h>
 
@@ -154,6 +156,83 @@ static enum rpbp_status op_temp_read(const struct rpbp_header *req,
     return RPBP_OK;
 }
 
+/* ───── 0x04 — STREAM_START ──────────────────────────────────────────── */
+
+/*
+ * Wire format: [channel LE u16][channel_mask u8][reserved u8][rate_hz LE u32]
+ *   channel       — dynamic channel (16..239) host proposes for the stream
+ *   channel_mask  — ADC channels to sample, bits 0..4 (ch 0..3 + temp)
+ *   rate_hz       — sample rate per channel-set (sets/s).
+ *                   Clamped to 1..10000 — USB FS bandwidth ceiling.
+ */
+static enum rpbp_status op_stream_start(const struct rpbp_header *req,
+                                        const uint8_t *args, size_t args_len)
+{
+    if (args_len != 8u) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_ADC, RPBP_ADC_STREAM_START,
+                       RPBP_EMSGSIZE, NULL, 0, false);
+        return RPBP_OK;
+    }
+    uint16_t channel      = rd_le16(&args[0]);
+    uint8_t  channel_mask = args[2];
+    /* args[3] reserved */
+    uint32_t rate_hz      = (uint32_t)args[4]
+                          | ((uint32_t)args[5] << 8)
+                          | ((uint32_t)args[6] << 16)
+                          | ((uint32_t)args[7] << 24);
+
+    if (channel_mask == 0u || (channel_mask & 0xE0u) != 0u) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_ADC, RPBP_ADC_STREAM_START,
+                       RPBP_EINVAL, NULL, 0, false);
+        return RPBP_OK;
+    }
+    if (rate_hz == 0u)     rate_hz = 1u;
+    if (rate_hz > 10000u)  rate_hz = 10000u;
+
+    int rc = rpbp_stream_open(channel);
+    if (rc < 0) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_ADC, RPBP_ADC_STREAM_START,
+                       rc_to_status(rc), NULL, 0, false);
+        return RPBP_OK;
+    }
+
+    /* Start the Core-1 sampler + point the drain at this channel. */
+    uint32_t period_us = 1000000u / rate_hz;
+    io_control_adc_stream_channel(channel);
+    io_control_adc_configure(channel_mask, period_us);
+
+    uint8_t reply[2];
+    wr_le16(reply, channel);
+    rpbp_reply_cmd(req, RPBP_SUBSYS_ADC, RPBP_ADC_STREAM_START, RPBP_OK,
+                   reply, sizeof(reply), false);
+    return RPBP_OK;
+}
+
+/* ───── 0x05 — STREAM_STOP ───────────────────────────────────────────── */
+
+static enum rpbp_status op_stream_stop(const struct rpbp_header *req,
+                                       const uint8_t *args, size_t args_len)
+{
+    if (args_len != 2u) {
+        rpbp_reply_cmd(req, RPBP_SUBSYS_ADC, RPBP_ADC_STREAM_STOP,
+                       RPBP_EMSGSIZE, NULL, 0, false);
+        return RPBP_OK;
+    }
+    uint16_t channel = rd_le16(&args[0]);
+
+    /* Stop the producer first — any in-flight samples in the IPC ring
+     * are drained harmlessly by io_control_poll once the channel is
+     * closed. Order matters: closing the channel before stopping the
+     * producer would widen the drop window. */
+    io_control_adc_configure(0u, 0u);
+    io_control_adc_stream_channel(0xFFFFu);
+
+    int rc = rpbp_stream_close(channel);
+    rpbp_reply_cmd(req, RPBP_SUBSYS_ADC, RPBP_ADC_STREAM_STOP,
+                   rc_to_status(rc), NULL, 0, false);
+    return RPBP_OK;
+}
+
 /* ───── Dispatch ─────────────────────────────────────────────────────── */
 
 enum rpbp_status cmd_adc_dispatch(const struct rpbp_header *req,
@@ -164,10 +243,12 @@ enum rpbp_status cmd_adc_dispatch(const struct rpbp_header *req,
     (void)cbor;
 
     switch (opcode) {
-    case RPBP_ADC_READ:       return op_read     (req, args, args_len);
-    case RPBP_ADC_READ_MANY:  return op_read_many(req, args, args_len);
-    case RPBP_ADC_GET_REF:    return op_get_ref  (req, args, args_len);
-    case RPBP_ADC_TEMP_READ:  return op_temp_read(req, args, args_len);
+    case RPBP_ADC_READ:         return op_read       (req, args, args_len);
+    case RPBP_ADC_READ_MANY:    return op_read_many  (req, args, args_len);
+    case RPBP_ADC_GET_REF:      return op_get_ref    (req, args, args_len);
+    case RPBP_ADC_TEMP_READ:    return op_temp_read  (req, args, args_len);
+    case RPBP_ADC_STREAM_START: return op_stream_start(req, args, args_len);
+    case RPBP_ADC_STREAM_STOP:  return op_stream_stop (req, args, args_len);
     default:
         rpbp_reply_cmd(req, RPBP_SUBSYS_ADC, opcode, RPBP_ENOENT,
                        NULL, 0, false);

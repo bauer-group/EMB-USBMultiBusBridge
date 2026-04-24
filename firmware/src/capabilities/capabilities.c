@@ -71,7 +71,7 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  19
+#define RPBRIDGE_FEATURE_COUNT  20
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
@@ -91,6 +91,7 @@ static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "gpio.mask-atomic",    /* 64-bit atomic bank write/read                    */
     "pwm.invert",          /* PWM polarity inversion                           */
     "adc.temp",            /* on-chip temperature sensor                       */
+    "adc.stream",          /* continuous ADC sampling via dynamic RPBP channel */
     "can.classic",         /* CAN 2.0B via can2040 (PIO)                       */
     "can.gs-usb",           /* SocketCAN-compatible on vendor interface 1       */
 };

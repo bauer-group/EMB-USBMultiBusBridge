@@ -10,6 +10,7 @@
  */
 
 #include "rpbp_dispatch.h"
+#include "rpbp_stream.h"
 
 #include "pico/time.h"
 
@@ -328,9 +329,16 @@ enum rpbp_status rpbp_dispatch_frame(const struct rpbp_header *hdr,
         return handle_reset_channel(hdr, payload, payload_len);
 
     case RPBP_MT_STREAM_CREDIT:
-        /* Credit accounting for v1 scaffold: accept silently. Actual
-         * flow control lives in the channel layer once streams are
-         * wired up (not in this scaffold). */
+        /* Payload: [delta_bytes LE u32] — credit is additive. Hosts
+         * advertise credit by channel; unknown channels are ignored
+         * (the stream may have been closed between send + ack). */
+        if (payload_len >= 4u) {
+            uint32_t delta = (uint32_t)payload[0]
+                           | ((uint32_t)payload[1] << 8)
+                           | ((uint32_t)payload[2] << 16)
+                           | ((uint32_t)payload[3] << 24);
+            rpbp_stream_on_credit(hdr->channel, delta);
+        }
         return RPBP_OK;
 
     /* Device-to-host only — host sending these is a protocol error. */

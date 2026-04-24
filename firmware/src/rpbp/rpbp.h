@@ -210,10 +210,12 @@ enum rpbp_pwm_op {
 /* ───── ADC opcodes (subsys = 5) ─────────────────────────────────────── */
 
 enum rpbp_adc_op {
-    RPBP_ADC_READ       = 0x00,   /* channel → u16 raw + u16 mV        */
-    RPBP_ADC_READ_MANY  = 0x01,   /* channel_mask → packed u16 samples */
-    RPBP_ADC_GET_REF    = 0x02,   /* → u32 vref_mv                     */
-    RPBP_ADC_TEMP_READ  = 0x03,   /* → i16 cdegC (0.01 °C units)       */
+    RPBP_ADC_READ         = 0x00,   /* channel → u16 raw + u16 mV        */
+    RPBP_ADC_READ_MANY    = 0x01,   /* channel_mask → packed u16 samples */
+    RPBP_ADC_GET_REF      = 0x02,   /* → u32 vref_mv                     */
+    RPBP_ADC_TEMP_READ    = 0x03,   /* → i16 cdegC (0.01 °C units)       */
+    RPBP_ADC_STREAM_START = 0x04,   /* open continuous sampling stream   */
+    RPBP_ADC_STREAM_STOP  = 0x05,   /* tear down a stream                */
 };
 
 /*

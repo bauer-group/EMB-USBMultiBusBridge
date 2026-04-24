@@ -12,9 +12,10 @@ CAN) land in subsequent milestones.
 | Core 0 | TinyUSB event loop, RPBP framing, command dispatch, configuration operations, capability-map serializer, pin broker, non-time-critical work. |
 | Core 1 | I/O scheduler for PIO applets, DMA IRQ handling, ADC/CAN stream pumps, periodic TIME_SYNC emission. |
 
-Core 1 comes online with M6 — currently runs an idle 1 ms tick and
-anchors the cross-core IPC endpoints. ADC streaming, logic capture
-and the TIME_SYNC emitter move onto Core 1 in M6b.
+Core 1 comes online with M6 and, as of M6b, runs a drift-free
+ADC sampling service feeding the RPBP streaming path. Additional
+services (logic capture, TIME_SYNC emitter) register into the same
+scheduler as they land.
 
 ## Protocol-layer modules
 

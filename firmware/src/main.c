@@ -28,6 +28,7 @@
 
 #include "rpbp/rpbp.h"
 #include "rpbp/rpbp_transport.h"
+#include "rpbp/rpbp_stream.h"
 #include "commands/cmd_sys.h"
 #include "usb/cdc_glue.h"
 #include "peripherals/pin_broker.h"
@@ -281,6 +282,7 @@ int main(void)
 
     tusb_init();
     rpbp_transport_init();
+    rpbp_stream_init();
     cdc_glue_init();
     i2c_hw_init_all();
     if (spi_hw_init_all() != 0) {

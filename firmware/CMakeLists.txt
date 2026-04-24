@@ -93,6 +93,7 @@ add_executable(rpbridge
     src/rpbp/rpbp_cbor.c
     src/rpbp/rpbp_dispatch.c
     src/rpbp/rpbp_transport.c
+    src/rpbp/rpbp_stream.c
 
     # Capability-map emitter.
     src/capabilities/capabilities.c
