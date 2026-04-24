@@ -183,6 +183,18 @@ static bool echo_pop(uint32_t *id)
  * gs_device_mode.flags during BREQ_MODE(START). Cleared on RESET. */
 static volatile bool g_hw_ts_enabled;
 
+#if defined(RPBRIDGE_HAVE_CANFD) && RPBRIDGE_HAVE_CANFD
+/* CAN-FD is a compile-time gate because the physical layer on rev-B
+ * does not support FD frames (can2040 is Classic-only). Defining
+ * RPBRIDGE_HAVE_CANFD on a future board with an MCP2518FD (or similar)
+ * daughterboard flips the frame size calculator to FD widths. The
+ * protocol-layer additions needed for FD are documented in
+ * docs/protocol/hardware-canfd.md. */
+#  error "CAN-FD build selected but no FD-capable backend is wired up \
+in src/peripherals/can.c. Replace can2040 with an FD controller or \
+undefine RPBRIDGE_HAVE_CANFD."
+#endif
+
 static inline uint32_t host_frame_size(void)
 {
     return g_hw_ts_enabled ? GS_HOST_FRAME_SZ_HWTS : GS_HOST_FRAME_SZ_CLASSIC;
