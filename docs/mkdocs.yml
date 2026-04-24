@@ -104,6 +104,10 @@ nav:
       - SYS subsystem: protocol/subsystems/sys.md
       - UART subsystem: protocol/subsystems/uart.md
       - I²C subsystem: protocol/subsystems/i2c.md
+      - SPI subsystem: protocol/subsystems/spi.md
+      - GPIO subsystem: protocol/subsystems/gpio.md
+      - PWM subsystem: protocol/subsystems/pwm.md
+      - ADC subsystem: protocol/subsystems/adc.md
   - Firmware:
       - Overview: firmware/overview.md
       - Building & flashing: firmware/build.md

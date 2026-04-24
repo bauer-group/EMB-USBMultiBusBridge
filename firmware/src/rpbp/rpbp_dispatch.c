@@ -16,6 +16,10 @@
 #include "commands/cmd_sys.h"
 #include "commands/cmd_uart.h"
 #include "commands/cmd_i2c.h"
+#include "commands/cmd_spi.h"
+#include "commands/cmd_gpio.h"
+#include "commands/cmd_pwm.h"
+#include "commands/cmd_adc.h"
 
 #include <string.h>
 
@@ -282,11 +286,16 @@ static enum rpbp_status handle_cmd_request(const struct rpbp_header *hdr,
         return cmd_i2c_dispatch(hdr, opcode, args, args_len, cbor);
 
     case RPBP_SUBSYS_SPI:
+        return cmd_spi_dispatch(hdr, opcode, args, args_len, cbor);
+
     case RPBP_SUBSYS_GPIO:
+        return cmd_gpio_dispatch(hdr, opcode, args, args_len, cbor);
+
     case RPBP_SUBSYS_PWM:
+        return cmd_pwm_dispatch(hdr, opcode, args, args_len, cbor);
+
     case RPBP_SUBSYS_ADC:
-        rpbp_reply_cmd(hdr, subsys, opcode, RPBP_ENOTSUP, NULL, 0, false);
-        return RPBP_OK;
+        return cmd_adc_dispatch(hdr, opcode, args, args_len, cbor);
 
     default:
         rpbp_reply_cmd(hdr, subsys, opcode, RPBP_ENOENT, NULL, 0, false);

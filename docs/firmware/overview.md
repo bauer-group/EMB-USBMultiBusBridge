@@ -29,6 +29,10 @@ M6.
 | `src/commands/cmd_sys.{c,h}`          | SYS subsystem handlers (subsys = 0).                   |
 | `src/commands/cmd_uart.{c,h}`         | UART subsystem handlers (subsys = 6) — SET_PHY / GET_PHY. |
 | `src/commands/cmd_i2c.{c,h}`          | RPBP I²C subsystem (PROBE / XFER / SCAN / SET_FREQ / GET_FREQ). |
+| `src/commands/cmd_spi.{c,h}`          | RPBP SPI subsystem (XFER / SET_MODE / SET_FREQ / GET_FREQ / CS_ASSERT / CS_RELEASE). |
+| `src/commands/cmd_gpio.{c,h}`         | RPBP GPIO subsystem (LIST / CONFIGURE / SET / GET / SET_MASK / GET_MASK). |
+| `src/commands/cmd_pwm.{c,h}`          | RPBP PWM subsystem (CONFIGURE / SET_DUTY / START / STOP / GET_STATE). |
+| `src/commands/cmd_adc.{c,h}`          | RPBP ADC subsystem (READ / READ_MANY / GET_REF / TEMP_READ). |
 | `src/usb/tusb_config.h`               | TinyUSB build-time configuration.                      |
 | `src/usb/usb_descriptors.c`           | Composite device + BOS + vendor control-transfer.      |
 | `src/usb/ms_os_20.{c,h}`              | BOS platform capability + MS OS 2.0 descriptor set.    |
@@ -38,6 +42,10 @@ M6.
 | `src/peripherals/uart_pio.{c,h}`      | PIO-backed 8N1 UART (PIO1, two SMs) with software rings. |
 | `src/peripherals/uart_phy.{c,h}`      | UART0 phy-bank selector (OFF / TTL / RS232 / RS485).   |
 | `src/peripherals/i2c_hw.{c,h}`        | RP2350 HW-I²C wrapper for both bus instances (Qwiic headers). |
+| `src/peripherals/spi.{c,h}`           | PL022 SPI wrapper, dual-instance, software CS.         |
+| `src/peripherals/gpio.{c,h}`          | User-GPIO subsystem with pin whitelist + 64-bit atomic mask ops. |
+| `src/peripherals/pwm.{c,h}`           | 12-slice PWM wrapper, shared between user subsystem and status LED. |
+| `src/peripherals/adc.{c,h}`           | RP2350 SAR-ADC wrapper (4 user channels + temperature sensor). |
 | `src/pio/uart_pio_tx.pio`             | PIO 8N1 TX program (8 cycles / bit).                   |
 | `src/pio/uart_pio_rx.pio`             | PIO 8N1 RX program with framing-error IRQ.             |
 

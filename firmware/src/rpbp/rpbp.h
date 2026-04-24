@@ -145,6 +145,83 @@ enum rpbp_i2c_op {
  */
 #define RPBP_I2C_FLAG_NO_STOP     (1u << 0)
 
+/* ───── SPI opcodes (subsys = 2) ─────────────────────────────────────── */
+
+enum rpbp_spi_op {
+    RPBP_SPI_XFER       = 0x00,   /* write/read/duplex transfer       */
+    RPBP_SPI_SET_MODE   = 0x01,   /* CPOL/CPHA/bit-order              */
+    RPBP_SPI_SET_FREQ   = 0x02,   /* baud rate (Hz)                   */
+    RPBP_SPI_GET_FREQ   = 0x03,
+    RPBP_SPI_CS_ASSERT  = 0x04,   /* manual CS low  (for multi-op)    */
+    RPBP_SPI_CS_RELEASE = 0x05,   /* manual CS high                   */
+};
+
+/*
+ * SPI XFER flags (byte 2 of the XFER arg header).
+ *   HOLD_CS : leave CS asserted after the transfer so the next XFER
+ *             on the same CS pin continues the same transaction.
+ */
+#define RPBP_SPI_FLAG_HOLD_CS    (1u << 0)
+
+/* SPI mode bits (SET_MODE arg byte 1). */
+#define RPBP_SPI_MODE_CPHA       (1u << 0)
+#define RPBP_SPI_MODE_CPOL       (1u << 1)
+#define RPBP_SPI_MODE_LSB_FIRST  (1u << 2)   /* bit order — advertised only, rejected on PL022 */
+
+/* ───── GPIO opcodes (subsys = 3) ────────────────────────────────────── */
+
+enum rpbp_gpio_op {
+    RPBP_GPIO_LIST      = 0x00,   /* enumerate host-exposed pins      */
+    RPBP_GPIO_CONFIGURE = 0x01,   /* direction + pull + drive         */
+    RPBP_GPIO_SET       = 0x02,   /* single pin level write           */
+    RPBP_GPIO_GET       = 0x03,   /* single pin level read            */
+    RPBP_GPIO_SET_MASK  = 0x04,   /* atomic bank write (u32 mask+val) */
+    RPBP_GPIO_GET_MASK  = 0x05,   /* atomic bank read (u32 mask)      */
+    RPBP_GPIO_WATCH     = 0x06,   /* reserved — IRQ events land in M6 */
+    RPBP_GPIO_UNWATCH   = 0x07,   /* reserved                          */
+};
+
+enum rpbp_gpio_dir {
+    RPBP_GPIO_DIR_INPUT  = 0,
+    RPBP_GPIO_DIR_OUTPUT = 1,
+};
+
+enum rpbp_gpio_pull {
+    RPBP_GPIO_PULL_NONE = 0,
+    RPBP_GPIO_PULL_UP   = 1,
+    RPBP_GPIO_PULL_DOWN = 2,
+};
+
+/* ───── PWM opcodes (subsys = 4) ─────────────────────────────────────── */
+
+enum rpbp_pwm_op {
+    RPBP_PWM_CONFIGURE = 0x00,   /* pin + freq_hz + duty_q16 + flags  */
+    RPBP_PWM_SET_DUTY  = 0x01,   /* pin + duty_q16                    */
+    RPBP_PWM_START     = 0x02,   /* pin                               */
+    RPBP_PWM_STOP      = 0x03,   /* pin                               */
+    RPBP_PWM_GET_STATE = 0x04,   /* pin → freq_hz + duty_q16 + running */
+};
+
+/* PWM CONFIGURE flag bits (arg byte 3). */
+#define RPBP_PWM_FLAG_INVERT  (1u << 0)   /* invert polarity of the channel */
+
+/* ───── ADC opcodes (subsys = 5) ─────────────────────────────────────── */
+
+enum rpbp_adc_op {
+    RPBP_ADC_READ       = 0x00,   /* channel → u16 raw + u16 mV        */
+    RPBP_ADC_READ_MANY  = 0x01,   /* channel_mask → packed u16 samples */
+    RPBP_ADC_GET_REF    = 0x02,   /* → u32 vref_mv                     */
+    RPBP_ADC_TEMP_READ  = 0x03,   /* → i16 cdegC (0.01 °C units)       */
+};
+
+/*
+ * ADC channel index is board-scoped. On rev-B:
+ *   0..3 = GP26..GP29 (user headers A0..A3)
+ *   4    = on-chip temperature sensor (see TEMP_READ for decoded °C)
+ * ADC channels 5..7 exist on the RP2350B die but are not routed on
+ * rev-B; the firmware rejects them with ENOENT.
+ */
+
 /* ───── UART opcodes (subsys = 6) ────────────────────────────────────── */
 
 enum rpbp_uart_op {
@@ -186,6 +263,7 @@ enum rpbp_status {
     RPBP_ECANCELED  = 12,
     RPBP_ENOSPC     = 13,
     RPBP_EOVERFLOW  = 14,
+    RPBP_ENODEV     = 15,    /* target did not ACK (I²C NACK, etc.) */
 };
 
 /* ───── In-memory header view ────────────────────────────────────────── */

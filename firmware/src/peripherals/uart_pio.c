@@ -30,8 +30,8 @@
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 
-#include "rpbridge_uart_pio_tx.pio.h"
-#include "rpbridge_uart_pio_rx.pio.h"
+#include "uart_pio_tx.pio.h"
+#include "uart_pio_rx.pio.h"
 
 #include <string.h>
 

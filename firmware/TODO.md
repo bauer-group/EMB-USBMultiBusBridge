@@ -45,13 +45,39 @@ authoritative spec section.
 
 ## M3 — SPI + GPIO + PWM + ADC
 
-- [ ] `src/peripherals/spi.{c,h}` + `src/commands/cmd_spi.c`
-- [ ] `src/peripherals/gpio.{c,h}` + `src/commands/cmd_gpio.c` (+ IRQ events
-      over channel 1)
-- [ ] `src/peripherals/pwm.{c,h}` + `src/commands/cmd_pwm.c`
-- [ ] `src/peripherals/adc.{c,h}` + `src/commands/cmd_adc.c` (single-shot + IIO
-      streaming)
-- [ ] LED brightness via PWM instead of binary GPIO in `main.c`
+- [x] `src/peripherals/spi.{c,h}` + `src/commands/cmd_spi.c` —
+      dual-instance PL022 wrapper (SPI0 on PMOD, SPI1 on breakout
+      with 3 CS lines). Manual software CS. Opcodes `XFER` /
+      `SET_MODE` / `SET_FREQ` / `GET_FREQ` / `CS_ASSERT` /
+      `CS_RELEASE`. Spec at
+      [`docs/protocol/subsystems/spi.md`](../docs/protocol/subsystems/spi.md).
+- [x] `src/peripherals/gpio.{c,h}` + `src/commands/cmd_gpio.c` —
+      11-pin user whitelist (GP30-31, GP37-45). Opcodes `LIST` /
+      `CONFIGURE` / `SET` / `GET` / `SET_MASK` / `GET_MASK` (64-bit
+      atomic). `WATCH` / `UNWATCH` reserved for M6 (core 1 + events
+      channel). Spec at
+      [`docs/protocol/subsystems/gpio.md`](../docs/protocol/subsystems/gpio.md).
+- [x] `src/peripherals/pwm.{c,h}` + `src/commands/cmd_pwm.c` —
+      6-pin user whitelist (GP30, GP31, GP37-40) via the 12 PWM
+      slices. Opcodes `CONFIGURE` / `SET_DUTY` / `START` / `STOP`
+      / `GET_STATE`. Duty is Q0.16; per-slice frequency conflict
+      returns `EBUSY`. Spec at
+      [`docs/protocol/subsystems/pwm.md`](../docs/protocol/subsystems/pwm.md).
+- [x] `src/peripherals/adc.{c,h}` + `src/commands/cmd_adc.c` —
+      4 external channels (GP26-29) + on-chip temperature sensor
+      with datasheet-calibrated decoding. Single-shot only;
+      streaming / IIO lands with M6.
+      Opcodes `READ` / `READ_MANY` / `GET_REF` / `TEMP_READ`.
+      Spec at
+      [`docs/protocol/subsystems/adc.md`](../docs/protocol/subsystems/adc.md).
+- [x] LED brightness via PWM instead of binary GPIO in `main.c` —
+      1 kHz PWM on GP22/23/24 with per-channel perceptual
+      calibration (30 % R / 100 % G / 60 % B). Default heartbeat
+      is now a smooth green breathing pattern at 1 Hz.
+- [x] Capability map advertises SPI (2 instances), GPIO (1 bank),
+      PWM (1 bank), ADC (1 block incl. temperature sensor) + the
+      feature flags `spi.mode-0-3`, `gpio.mask-atomic`, `pwm.invert`,
+      `adc.temp`.
 
 ## M4 — CDC-ACM bridge to HW UART / RS485-DE applet
 

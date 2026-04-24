@@ -71,7 +71,7 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  13
+#define RPBRIDGE_FEATURE_COUNT  17
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
@@ -87,6 +87,10 @@ static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "i2c.100k",            /* I²C Standard-mode                                */
     "i2c.400k",            /* I²C Fast-mode                                    */
     "i2c.1m",              /* I²C Fast-mode Plus                               */
+    "spi.mode-0-3",        /* SPI modes 0..3 (CPOL/CPHA)                       */
+    "gpio.mask-atomic",    /* 64-bit atomic bank write/read                    */
+    "pwm.invert",          /* PWM polarity inversion                           */
+    "adc.temp",            /* on-chip temperature sensor                       */
 };
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
@@ -138,7 +142,7 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
      * Pending: SPI, GPIO, PWM, ADC, CAN, 1-Wire.
      */
     cbor_writer_text_cstr(&w, "buses");
-    cbor_writer_map(&w, 2);
+    cbor_writer_map(&w, 6);
 
     cbor_writer_text_cstr(&w, "uart");
     cbor_writer_array(&w, 4);
@@ -226,6 +230,91 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
         cbor_writer_uint(&w, 100000);
         cbor_writer_uint(&w, 400000);
         cbor_writer_uint(&w, 1000000);
+    }
+
+    /* SPI — two HW-backed buses with their canonical pin layout. */
+    cbor_writer_text_cstr(&w, "spi");
+    cbor_writer_array(&w, 2);
+
+    /* SPI #0 — PMOD (single CS on GP17, user IRQ on GP9). */
+    {
+        cbor_writer_map(&w, 7);
+        cbor_writer_kv_uint(&w, "idx",      0);
+        cbor_writer_kv_uint(&w, "sck_pin",  18);
+        cbor_writer_kv_uint(&w, "mosi_pin", 19);
+        cbor_writer_kv_uint(&w, "miso_pin", 16);
+        cbor_writer_kv_uint(&w, "max_freq", 62500000);
+        cbor_writer_text_cstr(&w, "cs_pins");
+        cbor_writer_array(&w, 1);
+        cbor_writer_uint(&w, 17);
+        cbor_writer_kv_uint(&w, "int_pin",  9);
+    }
+    /* SPI #1 — Breakout with 3 CS lines. */
+    {
+        cbor_writer_map(&w, 6);
+        cbor_writer_kv_uint(&w, "idx",      1);
+        cbor_writer_kv_uint(&w, "sck_pin",  10);
+        cbor_writer_kv_uint(&w, "mosi_pin", 11);
+        cbor_writer_kv_uint(&w, "miso_pin", 12);
+        cbor_writer_kv_uint(&w, "max_freq", 62500000);
+        cbor_writer_text_cstr(&w, "cs_pins");
+        cbor_writer_array(&w, 3);
+        cbor_writer_uint(&w, 13);
+        cbor_writer_uint(&w, 14);
+        cbor_writer_uint(&w, 15);
+    }
+
+    /* GPIO — single host-exposed bank, pins listed explicitly so the
+     * host can pre-validate requests without a round-trip to LIST. */
+    cbor_writer_text_cstr(&w, "gpio");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 2);
+        cbor_writer_kv_uint(&w, "idx",    0);
+        cbor_writer_text_cstr(&w, "pins");
+        cbor_writer_array(&w, 11);
+        cbor_writer_uint(&w, 30); cbor_writer_uint(&w, 31);
+        cbor_writer_uint(&w, 37); cbor_writer_uint(&w, 38);
+        cbor_writer_uint(&w, 39); cbor_writer_uint(&w, 40);
+        cbor_writer_uint(&w, 41); cbor_writer_uint(&w, 42);
+        cbor_writer_uint(&w, 43); cbor_writer_uint(&w, 44);
+        cbor_writer_uint(&w, 45);
+    }
+
+    /* PWM — user-exposed pins only (the LED channels are internal). */
+    cbor_writer_text_cstr(&w, "pwm");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 3);
+        cbor_writer_kv_uint(&w, "idx",      0);
+        cbor_writer_kv_uint(&w, "max_freq", 62500000);
+        cbor_writer_text_cstr(&w, "pins");
+        cbor_writer_array(&w, 6);
+        cbor_writer_uint(&w, 30); cbor_writer_uint(&w, 31);
+        cbor_writer_uint(&w, 37); cbor_writer_uint(&w, 38);
+        cbor_writer_uint(&w, 39); cbor_writer_uint(&w, 40);
+    }
+
+    /* ADC — four user channels plus the on-chip temperature sensor. */
+    cbor_writer_text_cstr(&w, "adc");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 4);
+        cbor_writer_kv_uint(&w, "idx",       0);
+        cbor_writer_kv_uint(&w, "vref_mv",   3300);
+        cbor_writer_kv_uint(&w, "resolution_bits", 12);
+        cbor_writer_text_cstr(&w, "channels");
+        cbor_writer_array(&w, 5);
+        /* Each channel entry: [idx, gp_pin | -1 for internal, kind] */
+        for (int i = 0; i < 4; ++i) {
+            cbor_writer_map(&w, 3);
+            cbor_writer_kv_uint(&w, "ch",     (uint64_t)i);
+            cbor_writer_kv_uint(&w, "gp",     (uint64_t)(26 + i));
+            cbor_writer_kv_text(&w, "kind",   "external");
+        }
+        cbor_writer_map(&w, 2);
+        cbor_writer_kv_uint(&w, "ch",     4);
+        cbor_writer_kv_text(&w, "kind",   "temperature");
     }
 
     /* ota descriptor */

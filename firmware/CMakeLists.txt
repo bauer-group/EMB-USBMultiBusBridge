@@ -26,6 +26,18 @@ endif()
 
 set(PICO_BOARD_HEADER_DIRS "${CMAKE_CURRENT_LIST_DIR}/boards")
 
+# PICO_BOARD / PICO_PLATFORM MUST be set before pico_sdk_import.cmake is
+# included — the SDK reads them during its own include to pick defaults
+# for compiler, board header, and TinyUSB BSP path. A late `if(NOT)`
+# guard after the include arrives too late: the SDK has already defaulted
+# to PICO_BOARD=pico / PICO_PLATFORM=rp2040.
+if(NOT PICO_BOARD)
+    set(PICO_BOARD rpbridge_rp2354b CACHE STRING "Target board")
+endif()
+if(NOT PICO_PLATFORM)
+    set(PICO_PLATFORM rp2350 CACHE STRING "Target platform")
+endif()
+
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/pico_sdk_import.cmake)
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -42,13 +54,6 @@ set(CMAKE_C_STANDARD             11)
 set(CMAKE_CXX_STANDARD           17)
 set(CMAKE_C_EXTENSIONS           ON)   # GNU extensions are used by the SDK
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-if(NOT PICO_BOARD)
-    set(PICO_BOARD rpbridge_rp2354b CACHE STRING "Target board")
-endif()
-if(NOT PICO_PLATFORM)
-    set(PICO_PLATFORM rp2350 CACHE STRING "Target platform")
-endif()
 
 pico_sdk_init()
 
@@ -96,6 +101,10 @@ add_executable(rpbridge
     src/commands/cmd_sys.c
     src/commands/cmd_uart.c
     src/commands/cmd_i2c.c
+    src/commands/cmd_spi.c
+    src/commands/cmd_gpio.c
+    src/commands/cmd_pwm.c
+    src/commands/cmd_adc.c
 
     # Peripheral drivers.
     src/peripherals/pin_broker.c
@@ -103,6 +112,10 @@ add_executable(rpbridge
     src/peripherals/uart_pio.c
     src/peripherals/uart_phy.c
     src/peripherals/i2c_hw.c
+    src/peripherals/spi.c
+    src/peripherals/gpio.c
+    src/peripherals/pwm.c
+    src/peripherals/adc.c
 
     # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding,
     # plus the CDC-ACM <-> UART byte-shuttle glue.
@@ -129,6 +142,7 @@ pico_generate_pio_header(rpbridge
 
 target_include_directories(rpbridge PRIVATE
     src
+    src/usb   # so the SDK's tusb.h can resolve `#include "tusb_config.h"`
     ${CMAKE_CURRENT_BINARY_DIR}/generated
     third_party/can2040/src
 )

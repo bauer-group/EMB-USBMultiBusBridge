@@ -26,6 +26,13 @@ extern "C" {
 #define CFG_TUSB_OS               OPT_OS_PICO
 #define CFG_TUSB_DEBUG            0
 
+/* Root-hub port 0 is the only USB port on RP2040/RP2350 and runs in
+ * device mode for this firmware. Newer TinyUSB (≥ 0.18) requires the
+ * mode macros to be present at compile time for `tusb_init()`'s
+ * static assertions. */
+#define CFG_TUSB_RHPORT0_MODE     OPT_MODE_DEVICE
+#define CFG_TUSB_RHPORT1_MODE     OPT_MODE_NONE
+
 /* ───── Device class capacities ──────────────────────────────────────── */
 
 #define CFG_TUD_ENABLED           1
@@ -53,7 +60,7 @@ extern "C" {
 #define CFG_TUD_MSC               0
 #define CFG_TUD_MIDI              0
 #define CFG_TUD_AUDIO             0
-#define CFG_TUD_NET               0
+#define CFG_TUD_ECM_RNDIS         0
 
 /* ───── CDC FIFO sizes ───────────────────────────────────────────────── */
 
