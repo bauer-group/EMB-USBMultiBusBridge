@@ -175,59 +175,78 @@ impl<T: RoundTrip + ?Sized> Client<T> {
     }
 }
 
-/* ═════ Layer 3 — auxiliary_device adapter ════════════════════════ */
+/* ═════ Layer 3 — pwm_chip kernel integration ═══════════════════ */
 
-#[allow(dead_code)]
-pub(crate) struct PwmChild {
+use crate::ffi;
+
+struct PwmBackendImpl {
     client: Client<RpbridgeState>,
-    /// Whitelist of PWM-capable pins read from capability map. The
-    /// kernel's pwm_chip indexes its logical channels 0..N and our
-    /// adapter maps channel → pins[channel].
     pins:   Vec<u8>,
+}
+
+impl ffi::pwm::PwmBackend for PwmBackendImpl {
+    fn apply(&self, hwpwm: u32, state: &ffi::pwm::PwmState) -> i32 {
+        let Some(&pin) = self.pins.as_slice().get(hwpwm as usize) else {
+            return -crate::errno::ENODEV;
+        };
+        let polarity_invert = matches!(state.polarity, ffi::pwm::Polarity::Inversed);
+        match self.client.apply_state(
+            pin, state.period_ns, state.duty_ns,
+            polarity_invert, state.enabled,
+        ) {
+            Ok(())  => 0,
+            Err(e)  => -e,
+        }
+    }
+
+    fn get_state(&self, hwpwm: u32) -> Result<ffi::pwm::PwmState, i32> {
+        let pin = *self.pins.as_slice().get(hwpwm as usize)
+            .ok_or(crate::errno::ENODEV)?;
+        let s = self.client.get_state(pin)?;
+        let (period_ns, duty_ns) = decode_state(&s);
+        Ok(ffi::pwm::PwmState {
+            period_ns,
+            duty_ns,
+            enabled:  s.running,
+            polarity: if s.invert {
+                ffi::pwm::Polarity::Inversed
+            } else {
+                ffi::pwm::Polarity::Normal
+            },
+        })
+    }
+}
+
+pub(crate) struct PwmChild {
+    _handle: ffi::pwm::ChipHandle,
     #[allow(dead_code)]
-    idx:    u16,
+    idx:     u16,
 }
 
 impl PwmChild {
     pub(crate) fn probe(
         state: Arc<RpbridgeState>, bus: &BusCaps,
     ) -> Result<Self> {
-        let client = Client::new(state);
+        let client = Client::new(state.clone());
         let mut pins = Vec::new();
         for &p in bus.pins.iter() { pins.push(p, GFP_KERNEL)?; }
-        pr_info!("rpbridge-pwm.{}: {} channel(s)\n", bus.idx, pins.len());
+        // Sensible default if the capability map didn't populate pins:
+        // the rev-B firmware exposes PWM on 6 lines.
+        if pins.is_empty() {
+            for &p in &[30u8, 31, 37, 38, 39, 40] { pins.push(p, GFP_KERNEL)?; }
+        }
+        let npwm = pins.len() as u32;
+        pr_info!("rpbridge-pwm.{}: {} channel(s)\n", bus.idx, npwm);
 
-        // TODO §R4L-PWM-BINDINGS:
-        //
-        //   Once kernel::pwm::Chip is available:
-        //
-        //     fn apply(&self, channel: usize, state: &PwmState) -> Result<()> {
-        //         let pin = self.pins[channel];
-        //         self.client.apply_state(
-        //             pin,
-        //             state.period_ns(),
-        //             state.duty_cycle_ns(),
-        //             state.polarity() == Polarity::Inversed,
-        //             state.enabled(),
-        //         )
-        //     }
-        //
-        //     fn get_state(&self, channel: usize, state: &mut PwmState) {
-        //         let pin = self.pins[channel];
-        //         let s = self.client.get_state(pin)?;
-        //         let (period, duty) = decode_state(&s);
-        //         state.set_period_ns(period);
-        //         state.set_duty_cycle_ns(duty);
-        //         state.set_polarity(if s.invert { Inversed } else { Normal });
-        //         state.set_enabled(s.running);
-        //         Ok(())
-        //     }
+        let parent = crate::ffi::auxiliary::parent_device(
+            &*core::ops::Deref::deref(&state)
+        ).map_err(|e| kernel::error::Error::from_errno(e))?;
 
-        Ok(PwmChild { client, pins, idx: bus.idx })
+        let backend = PwmBackendImpl { client, pins };
+        let handle = ffi::pwm::ChipHandle::register(parent, npwm, backend)
+            .map_err(|e| kernel::error::Error::from_errno(e))?;
+        Ok(PwmChild { _handle: handle, idx: bus.idx })
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn client(&self) -> &Client<RpbridgeState> { &self.client }
 }
 
 /* ═════ Tests ═════════════════════════════════════════════════════ */
