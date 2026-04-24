@@ -308,25 +308,37 @@ static int ctlr_transfer_one_message(struct spi_controller *c,
 				     struct spi_message *msg)
 {
 	struct rpbridge_spi_priv *p = spi_controller_get_devdata(c);
-	return rpbridge_spi_cb_transfer_one_message(p->cookie, msg);
+	int ret = rpbridge_spi_cb_transfer_one_message(p->cookie, msg);
+	/* The SPI core contract requires transfer_one_message to finalize
+	 * the message before returning — otherwise the next request stays
+	 * queued forever. Rust callers set `ret` but don't know about
+	 * finalize_current_message, so we do it here. */
+	msg->status = ret;
+	spi_finalize_current_message(c);
+	return ret;
 }
 
 struct spi_controller *rpbridge_spi_controller_new(struct device *parent,
 						    u16 num_chipselect,
 						    void *cookie)
 {
-	struct spi_controller *ctlr =
-		spi_alloc_master(parent, sizeof(struct rpbridge_spi_priv));
+	struct spi_controller *ctlr;
 	struct rpbridge_spi_priv *p;
 
+	/* spi_alloc_host is the post-6.17 name for spi_alloc_master. The
+	 * old symbol is still re-exported via a compat shim as of 6.18
+	 * but we pick the modern name to stay warning-free on upstream
+	 * kernels. */
+	ctlr = spi_alloc_host(parent, sizeof(struct rpbridge_spi_priv));
 	if (!ctlr) return NULL;
+
 	p = spi_controller_get_devdata(ctlr);
 	p->ctlr   = ctlr;
 	p->cookie = cookie;
 
-	ctlr->num_chipselect = num_chipselect;
-	ctlr->mode_bits      = SPI_CPOL | SPI_CPHA;
-	ctlr->bits_per_word_mask = SPI_BPW_MASK(8);
+	ctlr->num_chipselect       = num_chipselect;
+	ctlr->mode_bits            = SPI_CPOL | SPI_CPHA;
+	ctlr->bits_per_word_mask   = SPI_BPW_MASK(8);
 	ctlr->transfer_one_message = ctlr_transfer_one_message;
 	/* We drive CS via the firmware (FLAG_HOLD_CS), so controller
 	 * core should not manage CS GPIOs at all. */
@@ -365,10 +377,10 @@ bool      rpbridge_spi_xfer_cs_change(struct spi_transfer *x) { return x->cs_cha
 
 u8 rpbridge_spi_dev_cs_pin(struct spi_device *d)
 {
-	/* Our spidev binding passes the CS GPIO via the spi_board_info's
-	 * chip_select slot. Real code walks d->chip_select; shim stays
-	 * minimal. */
-	return (u8)d->chip_select;
+	/* spi_get_chipselect() replaces the direct d->chip_select access
+	 * in 6.17+. Still valid on 6.18+; we don't maintain pre-6.17
+	 * compat because kernel-baseline requires 6.18. */
+	return (u8)spi_get_chipselect(d, 0);
 }
 
 void rpbridge_spi_finalize_current_message(struct spi_controller *ctlr)
@@ -376,12 +388,12 @@ void rpbridge_spi_finalize_current_message(struct spi_controller *ctlr)
 	spi_finalize_current_message(ctlr);
 }
 
-/* ───── PWM shim ─────────────────────────────────────────────────── */
-
-struct rpbridge_pwm_priv {
-	struct pwm_chip chip;
-	void *cookie;
-};
+/* ───── PWM shim ─────────────────────────────────────────────────── *
+ *
+ * pwm_chip layout has been private since 6.10; drivers must allocate
+ * via pwmchip_alloc(parent, npwm, sizeof_priv) and attach a cookie via
+ * pwmchip_priv(chip). container_of + kzalloc no longer works on 6.18.
+ */
 
 extern int rpbridge_pwm_cb_apply(void *cookie, unsigned int hwpwm,
 				  const struct pwm_state *state);
@@ -391,16 +403,14 @@ extern int rpbridge_pwm_cb_get_state(void *cookie, unsigned int hwpwm,
 static int ops_apply(struct pwm_chip *c, struct pwm_device *d,
 		     const struct pwm_state *state)
 {
-	struct rpbridge_pwm_priv *p =
-		container_of(c, struct rpbridge_pwm_priv, chip);
-	return rpbridge_pwm_cb_apply(p->cookie, d->hwpwm, state);
+	void *cookie = *(void **)pwmchip_priv(c);
+	return rpbridge_pwm_cb_apply(cookie, d->hwpwm, state);
 }
 static int ops_get_state(struct pwm_chip *c, struct pwm_device *d,
 			 struct pwm_state *state)
 {
-	struct rpbridge_pwm_priv *p =
-		container_of(c, struct rpbridge_pwm_priv, chip);
-	return rpbridge_pwm_cb_get_state(p->cookie, d->hwpwm, state);
+	void *cookie = *(void **)pwmchip_priv(c);
+	return rpbridge_pwm_cb_get_state(cookie, d->hwpwm, state);
 }
 
 static const struct pwm_ops rpbridge_pwm_ops = {
@@ -411,22 +421,21 @@ static const struct pwm_ops rpbridge_pwm_ops = {
 struct pwm_chip *rpbridge_pwm_chip_new(struct device *parent,
 					unsigned int npwm, void *cookie)
 {
-	struct rpbridge_pwm_priv *p = kzalloc(sizeof(*p), GFP_KERNEL);
-	if (!p) return NULL;
-	p->cookie         = cookie;
-	p->chip.dev       = parent;
-	p->chip.ops       = &rpbridge_pwm_ops;
-	p->chip.npwm      = npwm;
-	return &p->chip;
+	struct pwm_chip *chip = pwmchip_alloc(parent, npwm, sizeof(void *));
+
+	if (IS_ERR_OR_NULL(chip))
+		return NULL;
+
+	*(void **)pwmchip_priv(chip) = cookie;
+	chip->ops = &rpbridge_pwm_ops;
+	return chip;
 }
 
 int  rpbridge_pwm_chip_register(struct pwm_chip *c) { return pwmchip_add(c); }
 void rpbridge_pwm_chip_free(struct pwm_chip *c)
 {
-	struct rpbridge_pwm_priv *p =
-		container_of(c, struct rpbridge_pwm_priv, chip);
 	pwmchip_remove(c);
-	kfree(p);
+	pwmchip_put(c);
 }
 
 u64  rpbridge_pwm_state_period_ns(struct pwm_state *s) { return s->period; }
@@ -441,7 +450,14 @@ void rpbridge_pwm_state_set_polarity(struct pwm_state *s, int v) { s->polarity =
 
 unsigned int rpbridge_pwm_dev_hwpwm(struct pwm_device *d) { return d->hwpwm; }
 
-/* ───── IIO shim ─────────────────────────────────────────────────── */
+/* ───── IIO shim ─────────────────────────────────────────────────── *
+ *
+ * The iio_chan_spec array below describes the fixed channel map on
+ * rev-B: 4 voltage channels on GP26..GP29 + 1 on-die temperature.
+ * Re-define this array alongside the firmware if the channel map
+ * changes; the Rust side reads samples via channel index so the
+ * indices here must match the firmware's READ / TEMP_READ contract.
+ */
 
 struct rpbridge_iio_priv {
 	struct iio_dev *indio;
@@ -464,6 +480,45 @@ static const struct iio_info rpbridge_iio_info = {
 	.read_raw = indio_read_raw,
 };
 
+/* Voltage channels 0..3 expose RAW + SCALE; SCALE is type-shared so
+ * userspace only reads `in_voltage_scale` once. Temperature channel 4
+ * exposes PROCESSED (in millidegrees C, as the IIO convention wants). */
+static const struct iio_chan_spec rpbridge_iio_channels[] = {
+	{
+		.type = IIO_VOLTAGE,
+		.channel = 0,
+		.indexed = 1,
+		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+		.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
+	},
+	{
+		.type = IIO_VOLTAGE,
+		.channel = 1,
+		.indexed = 1,
+		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+		.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
+	},
+	{
+		.type = IIO_VOLTAGE,
+		.channel = 2,
+		.indexed = 1,
+		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+		.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
+	},
+	{
+		.type = IIO_VOLTAGE,
+		.channel = 3,
+		.indexed = 1,
+		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+		.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
+	},
+	{
+		.type = IIO_TEMP,
+		.channel = 4,
+		.info_mask_separate = BIT(IIO_CHAN_INFO_PROCESSED),
+	},
+};
+
 struct iio_dev *rpbridge_iio_device_new(struct device *parent,
 					 unsigned int num_channels,
 					 void *cookie)
@@ -480,9 +535,14 @@ struct iio_dev *rpbridge_iio_device_new(struct device *parent,
 	indio->name     = "rpbridge-iio";
 	indio->modes    = INDIO_DIRECT_MODE;
 	indio->info     = &rpbridge_iio_info;
-	indio->num_channels = num_channels;
-	/* iio_chan_spec array is configured by the Rust side post-alloc
-	 * via rpbridge_iio_set_channels(); keep the shim minimal. */
+
+	/* Clamp the caller-supplied num_channels to our canonical table.
+	 * The Rust side passes 5 (rev-B); anything else is rejected. */
+	if (num_channels != ARRAY_SIZE(rpbridge_iio_channels)) {
+		return NULL;
+	}
+	indio->channels     = rpbridge_iio_channels;
+	indio->num_channels = ARRAY_SIZE(rpbridge_iio_channels);
 	return indio;
 }
 
@@ -496,17 +556,23 @@ void rpbridge_iio_device_free(struct iio_dev *indio)
 	/* devm_iio_device_alloc: no explicit free. */
 }
 
+/*
+ * Triggered-buffer support is an M12 deliverable that needs a
+ * dedicated kthread feeding STREAM_DATA frames into the IIO buffer.
+ * The M11 driver is single-shot-only, so these functions are stubs
+ * that return -ENOSYS. Callers (there are none in the current Rust
+ * code path) therefore fail loudly instead of crashing on a
+ * half-configured triggered buffer.
+ */
 int rpbridge_iio_triggered_buffer_setup(struct iio_dev *indio)
 {
-	/* Trigger is fired by core_driver's stream-data pump via
-	 * iio_push_sample_block; we configure only the buffer side
-	 * here. */
-	return iio_triggered_buffer_setup(indio, NULL, NULL, NULL);
+	(void)indio;
+	return -ENOSYS;
 }
 
 void rpbridge_iio_triggered_buffer_teardown(struct iio_dev *indio)
 {
-	iio_triggered_buffer_cleanup(indio);
+	(void)indio;
 }
 
 void rpbridge_iio_push_sample_block(struct iio_dev *indio,
@@ -514,17 +580,7 @@ void rpbridge_iio_push_sample_block(struct iio_dev *indio,
 				     unsigned int n_samples,
 				     u64 ts_ns)
 {
-	/* Copy the samples + timestamp into the per-buffer scan pool
-	 * and fire iio_push_to_buffers_with_timestamp for each. We
-	 * assume a single active scan mask; partial masks are a
-	 * future enhancement. */
-	unsigned int i;
-	for (i = 0; i < n_samples; i++) {
-		struct {
-			u16 sample;
-			u16 pad;
-			s64 ts;
-		} scan = { samples[i], 0, (s64)ts_ns };
-		iio_push_to_buffers_with_timestamp(indio, &scan, scan.ts);
-	}
+	(void)indio; (void)samples; (void)n_samples; (void)ts_ns;
+	/* M12: push samples via iio_push_to_buffers_with_timestamp()
+	 * once the async event kthread is wired up. */
 }
