@@ -219,7 +219,9 @@ impl<T: RoundTrip + ?Sized> Client<T> {
     }
 }
 
-/* ═════ Layer 3 — auxiliary_device adapter ════════════════════════ */
+/* ═════ Layer 3 — iio_device kernel integration ═════════════════ */
+
+use crate::ffi;
 
 /// Channel descriptor emitted into the capability-map walk. IIO
 /// channels end up as `iio_chan_spec` entries: external inputs are
@@ -227,15 +229,73 @@ impl<T: RoundTrip + ?Sized> Client<T> {
 #[derive(Copy, Clone, Debug)]
 pub enum ChanKind { Voltage, Temperature }
 
-pub struct ChanDesc {
-    pub fw_channel: u8,
-    pub gp_pin:     Option<u8>,
-    pub kind:       ChanKind,
+/// On rev-B: channels 0..3 are external voltage inputs (GP26..29),
+/// channel 4 is the on-die temperature sensor.
+const VOLTAGE_CHANNEL_COUNT: i32 = 4;
+const TEMP_CHANNEL:          i32 = 4;
+const TOTAL_CHANNELS:        u32 = 5;
+
+struct IioBackendImpl {
+    client:  Client<RpbridgeState>,
+    vref_mv: u32,
 }
 
-#[allow(dead_code)]
+impl ffi::iio::IioBackend for IioBackendImpl {
+    fn read(&self, channel: i32, info: ffi::iio::IioInfo)
+        -> Result<ffi::iio::IioReadVal, i32>
+    {
+        use ffi::iio::{IioInfo, IioReadVal};
+        use crate::ffi::bindings as cc;
+
+        // Temperature channel uses a processed read regardless of
+        // whether the kernel asked for RAW or PROCESSED — the
+        // firmware already applies datasheet calibration.
+        if channel == TEMP_CHANNEL {
+            let cdeg = self.client.temp_cdeg()?;
+            return Ok(IioReadVal {
+                val:  cdeg as i32 * 10,     // cdeg → millidegrees C
+                val2: 0,
+                ret:  cc::IIO_VAL_INT,
+            });
+        }
+
+        if channel < 0 || channel >= VOLTAGE_CHANNEL_COUNT {
+            return Err(crate::errno::EINVAL);
+        }
+
+        match info {
+            IioInfo::Raw => {
+                let (raw, _mv) = self.client.read(channel as u8)?;
+                Ok(IioReadVal {
+                    val:  raw as i32,
+                    val2: 0,
+                    ret:  cc::IIO_VAL_INT,
+                })
+            }
+            IioInfo::Processed => {
+                let (_raw, mv) = self.client.read(channel as u8)?;
+                Ok(IioReadVal {
+                    val:  mv as i32,
+                    val2: 0,
+                    ret:  cc::IIO_VAL_INT,
+                })
+            }
+            IioInfo::Scale => {
+                // 12-bit ADC, vref_mv reference. Scale expresses
+                // "volts per count" = vref_mv / 4096 mV/count.
+                // IIO expects IIO_VAL_FRACTIONAL: val / val2.
+                Ok(IioReadVal {
+                    val:  self.vref_mv as i32,
+                    val2: 4096,
+                    ret:  cc::IIO_VAL_FRACTIONAL,
+                })
+            }
+        }
+    }
+}
+
 pub(crate) struct IioChild {
-    client: Client<RpbridgeState>,
+    _handle: ffi::iio::DeviceHandle,
     #[allow(dead_code)]
     vref_mv: u32,
     #[allow(dead_code)]
@@ -246,48 +306,20 @@ impl IioChild {
     pub(crate) fn probe(
         state: Arc<RpbridgeState>, bus: &BusCaps,
     ) -> Result<Self> {
-        let client = Client::new(state);
-        // Best-effort: fetch vref the firmware is actually using. On
-        // round-trip failure (probe ordering), fall back to the
-        // capability map's max_freq_hz field, which our cap parser
-        // has already populated with vref_mv for the ADC entry.
-        let vref_mv = client.vref_mv().unwrap_or(bus.max_freq_hz.max(3300));
-        pr_info!("rpbridge-iio.{}: probe (vref={}mV)\n", bus.idx, vref_mv);
+        let client = Client::new(state.clone());
+        let vref_mv = client.vref_mv().unwrap_or(3300);
+        pr_info!("rpbridge-iio.{}: probe (vref={}mV, {} channels)\n",
+                 bus.idx, vref_mv, TOTAL_CHANNELS);
 
-        // TODO §R4L-IIO-BINDINGS:
-        //
-        //   Once kernel::iio::Device is wired up:
-        //
-        //     channels[0..4] = iio_chan_spec {
-        //         type = IIO_VOLTAGE,
-        //         channel = ch,
-        //         indexed = true,
-        //         info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-        //         info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
-        //         scan_type = { .sign='u', .realbits=12, .storagebits=16, .endianness=IIO_LE },
-        //     }
-        //     channels[4] = iio_chan_spec {
-        //         type = IIO_TEMPERATURE,
-        //         info_mask_separate = BIT(IIO_CHAN_INFO_PROCESSED),
-        //     }
-        //
-        //     read_raw(ch, info) match info {
-        //         RAW       => client.read(ch.channel).raw,
-        //         SCALE     => vref_mv / 4096 (Q0.0 scaled),
-        //         PROCESSED => client.temp_cdeg() / 100 (for temperature ch),
-        //     }
-        //
-        //   Triggered-buffer path: on buffer_postenable(),
-        //   client.stream_start(chosen_channel, active_mask, rate_hz).
-        //   In the event-pump (core_driver handle_stream_data), call
-        //   iio_push_to_buffers_with_timestamp() once per StreamTick.
-        //   buffer_predisable() → client.stream_stop().
+        let parent = crate::ffi::auxiliary::parent_device(
+            &*core::ops::Deref::deref(&state)
+        ).map_err(|e| kernel::error::Error::from_errno(e))?;
 
-        Ok(IioChild { client, vref_mv, idx: bus.idx })
+        let backend = IioBackendImpl { client, vref_mv };
+        let handle = ffi::iio::DeviceHandle::register(parent, TOTAL_CHANNELS, backend)
+            .map_err(|e| kernel::error::Error::from_errno(e))?;
+        Ok(IioChild { _handle: handle, vref_mv, idx: bus.idx })
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn client(&self) -> &Client<RpbridgeState> { &self.client }
 }
 
 /* ═════ Tests ═════════════════════════════════════════════════════ */
