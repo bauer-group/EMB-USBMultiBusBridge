@@ -226,8 +226,26 @@ Run an internal suite of loopback and sanity checks.
 ```
 
 `test_mask` (u32, LE) — bitmap of tests to run. `0xFFFF_FFFF` means
-"all available". The capability map's `selftest_tests` array names
-each bit.
+"all available". Bits above the device's known range are silently
+ignored. Current rev-B firmware implements 10 tests:
+
+| Bit | Test                | What it verifies                                                  |
+|:---:|:--------------------|:------------------------------------------------------------------|
+| 0   | pin_broker integrity| Every broker slot has consistent (owner, function) tags.          |
+| 1   | CRC-32C known-vector| `rpbp_crc32c("123456789") == 0xE3069283` (RFC 3720).              |
+| 2   | clk_sys range       | `clock_get_hz(clk_sys)` within ±5 % of 150 MHz.                  |
+| 3   | ADC temp sensible   | On-chip temperature sensor reads a realistic bench value (5–85 °C). |
+| 4   | I²C #0 baudrate set | `i2c_hw_baudrate(0) > 0` — bus init ran and stuck.                |
+| 5   | SPI #0 SET_FREQ     | `spi_hw_set_freq(0, 1 MHz)` returns ~1 MHz (±50 %).               |
+| 6   | PWM LED running     | The R channel of the status LED is slice-enabled.                 |
+| 7   | CAN bitrate         | `can_hw_bitrate() > 0` — can2040 start() succeeded.               |
+| 8   | Core 1 alive        | `io_control` stats counter advances within a 2 ms window.         |
+| 9   | Watchdog enabled    | `watchdog_hw->ctrl` bit 30 (ENABLE) set.                          |
+
+Bits 10..31 are reserved for future additive tests. Hosts that pass
+a `test_mask` with unknown bits set get only the known bits in
+`pass_mask`; they can derive "unsupported" by checking
+`(test_mask & ~pass_mask)`.
 
 **Response (binary):**
 

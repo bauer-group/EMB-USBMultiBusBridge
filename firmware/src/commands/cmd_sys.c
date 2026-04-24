@@ -15,9 +15,19 @@
 #include "capabilities/capabilities.h"
 #include "version.h"
 
+#include "rpbp/rpbp_crc32c.h"
+#include "peripherals/pin_broker.h"
+#include "peripherals/i2c_hw.h"
+#include "peripherals/spi.h"
+#include "peripherals/pwm.h"
+#include "peripherals/adc.h"
+#include "peripherals/can.h"
+#include "io_control/io_control.h"
+
 #include "pico/time.h"
 #include "pico/bootrom.h"
 #include "hardware/watchdog.h"
+#include "hardware/clocks.h"
 
 #include <string.h>
 
@@ -243,23 +253,179 @@ static enum rpbp_status op_set_led(const struct rpbp_header *req,
     return RPBP_OK;
 }
 
-/* ───── SELFTEST (scaffold stub) ─────────────────────────────────────── */
+/* ───── SELFTEST ─────────────────────────────────────────────────────── */
+
+/*
+ * Bit positions in `test_mask` / `pass_mask`. Must stay stable across
+ * MINOR version bumps — hosts identify tests by bit number. Add new
+ * bits at the highest free position; never renumber.
+ */
+enum cmd_sys_test_bit {
+    TEST_PIN_BROKER_INTEGRITY = 0,  /* broker ledger internally consistent */
+    TEST_CRC32C_KNOWN_VECTOR  = 1,  /* RFC 3720 "123456789" == 0xE3069283  */
+    TEST_CLK_SYS_IN_RANGE     = 2,  /* clk_sys within ±5 % of 150 MHz     */
+    TEST_ADC_TEMP_SENSIBLE    = 3,  /* on-chip temp sensor between 5..85 °C */
+    TEST_I2C0_BAUDRATE_SET    = 4,  /* I²C #0 has a non-zero baudrate     */
+    TEST_SPI0_FREQ_APPLIED    = 5,  /* SPI #0 SET_FREQ round-trip matches  */
+    TEST_PWM_LED_RUNNING      = 6,  /* LED R channel state == running      */
+    TEST_CAN_INITIALISED      = 7,  /* can2040 reports a non-zero bitrate  */
+    TEST_CORE1_ALIVE          = 8,  /* io_control counter advances in 2 ms */
+    TEST_WATCHDOG_ENABLED     = 9,  /* watchdog ENABLE bit set             */
+
+    TEST_BIT_COUNT            = 10,
+};
+
+#define TEST_ALL_MASK   ((1u << TEST_BIT_COUNT) - 1u)
+
+/*
+ * Individual test runners. Each returns true on pass. They MUST be
+ * side-effect-free with respect to the live state of the firmware —
+ * e.g. the SPI freq test saves + restores the previous baud.
+ */
+
+static bool selftest_pin_broker_integrity(void)
+{
+    struct pin_broker_entry entries[PIN_BROKER_NUM_PINS];
+    size_t n = pin_broker_snapshot(entries, PIN_BROKER_NUM_PINS);
+    if (n != PIN_BROKER_NUM_PINS) return false;
+
+    for (size_t i = 0; i < n; ++i) {
+        /* pin number must equal its table index */
+        if (entries[i].pin != i) return false;
+        /* an owner of NONE must have function UNKNOWN */
+        if (entries[i].owner == PIN_OWNER_NONE &&
+            entries[i].function != PIN_FUNC_UNKNOWN) return false;
+        /* a live owner must have a concrete function tag */
+        if (entries[i].owner != PIN_OWNER_NONE &&
+            entries[i].function == PIN_FUNC_UNKNOWN) return false;
+    }
+    return true;
+}
+
+static bool selftest_crc32c(void)
+{
+    /* RFC 3720 Castagnoli reference vector. */
+    const uint8_t v[] = "123456789";
+    return rpbp_crc32c(v, sizeof(v) - 1u) == 0xE3069283u;
+}
+
+static bool selftest_clk_sys_range(void)
+{
+    uint32_t hz = clock_get_hz(clk_sys);
+    /* Nominal 150 MHz on this board; accept ±5 %. */
+    return hz > 142500000u && hz < 157500000u;
+}
+
+static bool selftest_adc_temp(void)
+{
+    int16_t cdeg;
+    if (adc_hw_read_temp_cdegC(&cdeg) < 0) return false;
+    /* Reasonable bench range: 5 °C .. 85 °C (= 500 .. 8500 cdegC). */
+    return cdeg > 500 && cdeg < 8500;
+}
+
+static bool selftest_i2c0_baud(void)
+{
+    return i2c_hw_baudrate(0u) > 0u;
+}
+
+static bool selftest_spi0_freq(void)
+{
+    uint32_t saved = spi_hw_freq(0u);
+    if (saved == 0u) return false;
+
+    uint32_t applied = spi_hw_set_freq(0u, 1000000u);   /* 1 MHz */
+    bool ok = applied >= 500000u && applied <= 2000000u;
+
+    /* Restore the previous baud so we don't disturb in-flight work. */
+    (void)spi_hw_set_freq(0u, saved);
+    return ok;
+}
+
+static bool selftest_pwm_led(void)
+{
+    struct pwm_hw_state st;
+    /* LED R lives on GP22 (see main.c led_init). */
+    if (pwm_hw_state(22u, &st) < 0) return false;
+    return st.running != 0u;
+}
+
+static bool selftest_can_init(void)
+{
+    return can_hw_bitrate() > 0u;
+}
+
+static bool selftest_core1_alive(void)
+{
+    struct io_control_stats a, b;
+    io_control_stats(&a);
+    /* Core 1's idle loop ticks at ~1 kHz. 2 ms is enough with margin. */
+    sleep_ms(2);
+    io_control_stats(&b);
+    return b.core1_loops > a.core1_loops;
+}
+
+static bool selftest_watchdog(void)
+{
+    /* On RP2350 the watchdog CTRL register's ENABLE bit lives at bit 30.
+     * Check it via watchdog_hw — already included by hardware/watchdog.h. */
+    return (watchdog_hw->ctrl & (1u << 30)) != 0u;
+}
+
+/* Dispatch table — indexed by enum cmd_sys_test_bit. */
+typedef bool (*cmd_sys_test_fn)(void);
+static const cmd_sys_test_fn g_tests[TEST_BIT_COUNT] = {
+    [TEST_PIN_BROKER_INTEGRITY] = selftest_pin_broker_integrity,
+    [TEST_CRC32C_KNOWN_VECTOR]  = selftest_crc32c,
+    [TEST_CLK_SYS_IN_RANGE]     = selftest_clk_sys_range,
+    [TEST_ADC_TEMP_SENSIBLE]    = selftest_adc_temp,
+    [TEST_I2C0_BAUDRATE_SET]    = selftest_i2c0_baud,
+    [TEST_SPI0_FREQ_APPLIED]    = selftest_spi0_freq,
+    [TEST_PWM_LED_RUNNING]      = selftest_pwm_led,
+    [TEST_CAN_INITIALISED]      = selftest_can_init,
+    [TEST_CORE1_ALIVE]          = selftest_core1_alive,
+    [TEST_WATCHDOG_ENABLED]     = selftest_watchdog,
+};
 
 static enum rpbp_status op_selftest(const struct rpbp_header *req,
                                     const uint8_t *args, size_t args_len)
 {
-    (void)args;
     if (args_len != 4) {
         rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_SELFTEST,
                        RPBP_EMSGSIZE, NULL, 0, false);
         return RPBP_OK;
     }
-    /*
-     * Scaffold: no tests registered yet, so pass_mask = 0 and no
-     * failure blobs. Real peripheral loopbacks land with their
-     * respective subsystems.
-     */
-    uint8_t buf[5] = { 0, 0, 0, 0, /* pass_mask LE */ 0 /* fails */ };
+
+    uint32_t test_mask = (uint32_t)args[0]
+                       | ((uint32_t)args[1] << 8)
+                       | ((uint32_t)args[2] << 16)
+                       | ((uint32_t)args[3] << 24);
+    /* Any bit above our known range is silently ignored — hosts that
+     * pass 0xFFFFFFFF get "all available". */
+    test_mask &= TEST_ALL_MASK;
+
+    uint32_t pass_mask = 0u;
+    for (unsigned bit = 0; bit < TEST_BIT_COUNT; ++bit) {
+        if ((test_mask & (1u << bit)) == 0u) continue;
+        /* Feed the watchdog between tests — core1-alive spins 2 ms and
+         * SPI round-trip can be tens of ms on a cold cache. */
+        watchdog_update();
+        if (g_tests[bit] != NULL && g_tests[bit]()) {
+            pass_mask |= (1u << bit);
+        }
+    }
+
+    /* Response: [pass_mask LE u32][fails u8 = 0] — no per-failure
+     * blobs in v1. Hosts compare (test_mask & ~pass_mask) to find
+     * which tests failed and can then issue subsystem-specific
+     * diagnostics (I²C SCAN, SPI loopback, etc.). */
+    uint8_t buf[5] = {
+        (uint8_t)(pass_mask         & 0xFFu),
+        (uint8_t)((pass_mask >> 8)  & 0xFFu),
+        (uint8_t)((pass_mask >> 16) & 0xFFu),
+        (uint8_t)((pass_mask >> 24) & 0xFFu),
+        0u,
+    };
     rpbp_reply_cmd(req, RPBP_SUBSYS_SYS, RPBP_SYS_SELFTEST, RPBP_OK,
                    buf, sizeof(buf), false);
     return RPBP_OK;

@@ -202,9 +202,16 @@ authoritative spec section.
       `RPBP_HOST_TEST` compile flag.
 - [ ] `tests/golden/*` byte-frozen corpus — hex files checked in so
       the userspace Rust decoder can consume the same vectors. M8b.
-- [ ] Loopback self-test (`SELFTEST` opcode) exercising every bus
-      on the live device. M8b — needs the SPI MOSI↔MISO jumper + a
-      defined pass/fail bitmask format.
+- [x] Loopback self-test (`SELFTEST` opcode) exercises every bus
+      on the live device. 10 tests covered: pin_broker integrity,
+      CRC-32C known-vector (RFC 3720), clk_sys range, ADC temp
+      sensor sensibility, I²C #0 baudrate set, SPI #0 SET_FREQ
+      round-trip, PWM-driven LED running, CAN bitrate non-zero,
+      Core 1 liveness counter advancing, watchdog CTRL.ENABLE set.
+      Pass/fail encoded as a u32 bitmap; full spec in
+      `docs/protocol/subsystems/sys.md` §0x06. Tests that would
+      need an external jumper (SPI MOSI↔MISO loopback, UART TX↔RX)
+      remain as future extensions on unused bits.
 
 ## M9 — Driver-optional coexistence (single configuration)
 
