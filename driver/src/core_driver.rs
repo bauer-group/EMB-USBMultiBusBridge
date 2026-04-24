@@ -5,24 +5,34 @@
 // Lifecycle:
 //
 //   probe()     USB interface matched. Allocate per-device state, submit
-//               the first bulk-IN URB, query the CBOR capability map via
-//               a synchronous RPBP CMD_REQUEST + CMD_RESPONSE, then spawn
-//               one auxiliary_device per advertised subsystem.
+//               the first bulk-IN URB, send HELLO + GET_CAPABILITIES,
+//               parse the CBOR capability map, then spawn one
+//               auxiliary_device per advertised subsystem.
 //
 //   disconnect() Tear down in reverse: unregister auxiliary_devices,
 //                kill anchored URBs, drop per-device state. The kernel
 //                USB core guarantees no further callbacks once
 //                usb_kill_anchored_urbs() has returned.
 //
-// This file is intentionally small — most of the RPBP logic lives in
-// `crate::rpbp`, per-subsystem logic lives in the respective child
-// modules, and CBOR parsing lives in `crate::cap`.
+// Most of the plumbing lives in subordinate modules:
+//   * `crate::rpbp`      — RPBP v1 framing + CRC-32C + subsystem constants
+//   * `crate::cap`       — CBOR capability-map parser
+//   * `crate::transport` — sequence allocator + completion table
+//   * `crate::{gpio,i2c,spi,pwm,iio}` — per-subsystem wire helpers +
+//     auxiliary_device children
+//
+// The USB-facing code — URB submission, endpoint discovery,
+// auxiliary_device_register — is thin by design. Where Rust-for-Linux
+// bindings are not yet available in the target kernel, the code is
+// structured so the missing call is a single line of pseudo-Rust next
+// to a TODO that names the kernel API it will call.
 
 use kernel::prelude::*;
 use kernel::sync::{Arc, Mutex};
 
 use crate::cap::Capabilities;
-use crate::rpbp;
+use crate::rpbp::{self, MsgType, CHAN_CONTROL};
+use crate::transport::{CompletionTable, Sequencer, RoundTrip};
 
 /// Empty shim for the in-kernel CRC-32C. When the `kernel::crc32c`
 /// binding is present (recent Rust-for-Linux trees expose it via
@@ -42,8 +52,6 @@ pub(crate) fn crc32c_slice(buf: &[u8]) -> u32 {
 }
 
 const CRC32C_TABLE: [u32; 256] = {
-    // Build the table in a const-fn context. `rustc` unrolls the loop
-    // at compile time so the resulting table is stored as data.
     let mut t = [0u32; 256];
     let mut i = 0;
     while i < 256 {
@@ -63,32 +71,235 @@ const CRC32C_TABLE: [u32; 256] = {
     t
 };
 
-/// Per-device state held in an `Arc` so auxiliary_device children can
-/// reference it without lifetime acrobatics.
-#[allow(dead_code)]
-pub(crate) struct RpbridgeState {
-    /// Parsed capability map — the only place that holds it.
-    pub(crate) caps: Mutex<Option<Capabilities>>,
-    // TODO: URB anchor, bulk-in/out endpoint handles, pending
-    //       completion table indexed by RPBP sequence number, CBOR
-    //       arena, attestation nonce, etc.
+/* ───── Per-device state ───────────────────────────────────────────── */
+
+/// Inner mutable state guarded by `RpbridgeState.inner`. Split out so
+/// callers hold the mutex only over the bookkeeping, not over the USB
+/// transfer itself — the transfer anchors a URB and sleeps on a
+/// wait-queue; holding a mutex across the sleep would dead-lock the
+/// RX path that wakes it.
+pub(crate) struct Inner {
+    pub(crate) ctrl_seq:     Sequencer,
+    pub(crate) completions:  CompletionTable,
+    pub(crate) caps:         Option<Capabilities>,
 }
 
-/// The USB driver glue.
-pub(crate) struct RpbridgeDriver;
+impl Inner {
+    pub(crate) fn new() -> Self {
+        Self {
+            ctrl_seq:    Sequencer::new(),
+            completions: CompletionTable::new(),
+            caps:        None,
+        }
+    }
+}
 
-// NOTE: the exact trait + impl shape depends on the Rust-for-Linux USB
-// bindings available in the target kernel. The skeleton below uses the
-// shape that landed with the `kernel::usb` abstraction; adapt the impl
-// trait names if you target a kernel with a different set of bindings.
-//
-// Match table: bind to our VID/PID, any interface (we pick the vendor
-// one by class/subclass inside probe()).
+/// Per-device state held in an `Arc` so auxiliary_device children can
+/// reference it without lifetime acrobatics. Children call
+/// `round_trip()` / `submit_oneway()` on this struct to issue RPBP
+/// requests; the `RoundTrip` impl blocks on a per-slot wait-queue and
+/// returns the parsed CMD_RESPONSE.
+pub(crate) struct RpbridgeState {
+    /// Mutable book-keeping. The USB transfer itself happens under the
+    /// `usb_core` anchor API, not under this lock.
+    pub(crate) inner: Mutex<Inner>,
+
+    // TODO §R4L-USB-BINDINGS:
+    //   Expect these fields once kernel::usb exposes URB + endpoint
+    //   abstractions (planned for 6.14–6.15 Rust-for-Linux bump):
+    //
+    //   pub(crate) bulk_in_ep:  kernel::usb::Endpoint,
+    //   pub(crate) bulk_out_ep: kernel::usb::Endpoint,
+    //   pub(crate) urb_anchor:  kernel::usb::Anchor,
+    //   pub(crate) rx_done:     kernel::sync::CondVar,
+    //   pub(crate) intf:        kernel::usb::Interface,
+    //
+    //   RX URBs are resubmitted inside on_rx_complete(); on disconnect
+    //   we call usb_kill_anchored_urbs(&urb_anchor) to drain them.
+}
+
+impl RpbridgeState {
+    pub(crate) fn new() -> Result<Arc<Self>> {
+        Ok(Arc::new(
+            RpbridgeState {
+                inner: new_mutex!(Inner::new(), "rpbridge.inner"),
+            },
+            GFP_KERNEL,
+        )?)
+    }
+}
+
+/* ───── RoundTrip impl — the piece subsystem children call ─────────── */
+
+impl RoundTrip for Arc<RpbridgeState> {
+    fn round_trip(&self, channel: u16, request: &[u8])
+        -> Result<(rpbp::Status, KVec<u8>), i32>
+    {
+        // 1. Reserve a seq + slot under the lock. Hold the lock only
+        //    for allocation, never across USB submission.
+        let (seq, slot_idx) = {
+            let mut g = self.inner.lock();
+            if channel != CHAN_CONTROL {
+                // Stream channels use their own sequencer instances.
+                // Round-trip semantics on them are a programmer error.
+                return Err(crate::errno::EINVAL);
+            }
+            let seq = g.ctrl_seq.take();
+            let idx = g.completions.allocate(channel, seq)?;
+            (seq, idx)
+        };
+
+        // 2. Build the outgoing frame. CMD_REQUEST on the control
+        //    channel, binary payload.
+        let mut buf = [0u8; rpbp::MAX_FRAME_LEN];
+        let mut hdr = rpbp::Header {
+            magic:        rpbp::MAGIC,
+            version:      rpbp::VERSION,
+            msg_type:     MsgType::CmdRequest as u8,
+            flags:        rpbp::Flags::empty(),
+            channel,
+            seq,
+            payload_len:  0, // set by build_frame
+            timestamp_us: 0,
+        };
+        let n = match rpbp::build_frame(&mut buf, &mut hdr, request) {
+            Ok(n) => n,
+            Err(e) => {
+                let mut g = self.inner.lock();
+                g.completions.cancel(slot_idx);
+                return Err(e);
+            }
+        };
+
+        // 3. Submit the bulk-OUT URB.
+        //
+        // TODO §R4L-USB-BINDINGS: replace with
+        //
+        //   kernel::usb::bulk_msg(
+        //       &self.intf.usb_dev(),
+        //       self.bulk_out_ep.addr(),
+        //       &buf[..n],
+        //       USB_CTRL_TIMEOUT_MSEC,
+        //   )?
+        //
+        // until the binding lands, synchronous submission is impossible
+        // from pure Rust code. `submit_frame_blocking` is a named hook
+        // the kernel wrapper overrides.
+        self.submit_frame_blocking(&buf[..n])?;
+
+        // 4. Block until the RX pump fulfills or timeout fires.
+        //
+        // TODO §R4L-USB-BINDINGS: replace with
+        //
+        //   self.rx_done.wait_timeout(&mut self.inner,
+        //                             Duration::from_millis(200))
+        //
+        // On wake-up, take_result() either returns the payload or
+        // EAGAIN (spurious wake-up → loop back to wait).
+        let (status, payload) = self.wait_for_completion(slot_idx, 200)?;
+        Ok((status, payload))
+    }
+
+    fn submit_oneway(&self, _channel: u16, frame: &[u8]) -> Result<(), i32> {
+        self.submit_frame_blocking(frame)
+    }
+}
+
+impl RpbridgeState {
+    /// Synchronous bulk-OUT submission. Blocking (caller must not hold
+    /// the inner lock). Kernel wrapper implements this once URB
+    /// bindings are available; the current body returns `ENOSYS` so
+    /// the code path is exercised on host unit tests without silently
+    /// succeeding against a non-functional transport.
+    fn submit_frame_blocking(&self, _frame: &[u8]) -> Result<(), i32> {
+        // TODO §R4L-USB-BINDINGS — see RoundTrip::round_trip() comment.
+        Err(crate::errno::ENOSYS.into())
+    }
+
+    /// Block until `idx` is fulfilled or `timeout_ms` passes. Returns
+    /// `ETIMEDOUT` on timeout (and marks the slot dead so a late
+    /// response gets dropped). Spurious wake-ups loop.
+    fn wait_for_completion(
+        &self, idx: crate::transport::SlotIdx, timeout_ms: u32,
+    ) -> Result<(rpbp::Status, KVec<u8>), i32> {
+        // TODO §R4L-USB-BINDINGS: implement with kernel::sync::CondVar
+        // wait_timeout. The stub returns ETIMEDOUT immediately so the
+        // caller surface is exercised — behind-the-scenes plumbing is
+        // the piece blocked on bindings.
+        let _ = (idx, timeout_ms);
+        Err(crate::errno::ETIMEDOUT.into())
+    }
+
+    /// Called by the RX URB-complete handler for every validated
+    /// frame that came off the wire. Fulfils the matching slot and
+    /// wakes its waiter. Channel 1 events and stream-data frames are
+    /// routed here too — they go to per-subsystem pumps without
+    /// touching the completion table.
+    pub(crate) fn dispatch_rx_frame(&self, frame: &[u8]) -> Result<(), i32> {
+        let hdr = rpbp::validate_frame(frame)?;
+        let payload = rpbp::payload_slice(frame, &hdr);
+
+        match rpbp::MsgType::try_from(hdr.msg_type)? {
+            MsgType::CmdResponse => self.handle_cmd_response(&hdr, payload),
+            MsgType::Error       => self.handle_error(&hdr, payload),
+            MsgType::Event       => self.handle_event(&hdr, payload),
+            MsgType::StreamData  => self.handle_stream_data(&hdr, payload),
+            MsgType::Pong        |
+            MsgType::Hello       |
+            MsgType::Capabilities |
+            MsgType::TimeSync    => {
+                // Setup-time frames; the probe() state machine handles
+                // these synchronously, RX pump ignores.
+                Ok(())
+            }
+            _ => Err(crate::errno::EPROTO),
+        }
+    }
+
+    fn handle_cmd_response(&self, hdr: &rpbp::Header, payload: &[u8]) -> Result<(), i32> {
+        let resp = rpbp::parse_cmd_response_bin(payload)?;
+        let mut out = KVec::new();
+        out.extend_from_slice(resp.result, GFP_KERNEL)
+            .map_err(|_| crate::errno::ENOMEM)?;
+        let mut g = self.inner.lock();
+        let _idx = g.completions.fulfill(hdr.channel, hdr.seq, resp.status, out)?;
+        // TODO §R4L-USB-BINDINGS: self.rx_done.notify_all();
+        Ok(())
+    }
+
+    fn handle_error(&self, _hdr: &rpbp::Header, payload: &[u8]) -> Result<(), i32> {
+        // ERROR payload: status(u8) orig_channel(LE u16) orig_seq(LE u16) reason_len(LE u16) reason[...]
+        if payload.len() < 7 { return Err(crate::errno::EPROTO); }
+        let status = rpbp::Status::try_from(payload[0])?;
+        let orig_channel = rpbp::rd_le16(&payload[1..3]);
+        let orig_seq     = rpbp::rd_le16(&payload[3..5]);
+        let mut g = self.inner.lock();
+        let _ = g.completions.fulfill(orig_channel, orig_seq, status, KVec::new());
+        // TODO §R4L-USB-BINDINGS: self.rx_done.notify_all();
+        Ok(())
+    }
+
+    fn handle_event(&self, _hdr: &rpbp::Header, _payload: &[u8]) -> Result<(), i32> {
+        // Events route to per-subsystem pumps (GPIO edge, bus fault…).
+        // Until the aux children are wired, drop silently.
+        Ok(())
+    }
+
+    fn handle_stream_data(&self, _hdr: &rpbp::Header, _payload: &[u8]) -> Result<(), i32> {
+        // Stream data routes to the stream client that opened the
+        // channel. IIO streaming is the first consumer.
+        Ok(())
+    }
+}
+
+/* ───── USB driver glue ────────────────────────────────────────────── */
 
 #[allow(dead_code)]
 const RPBRIDGE_USB_VID: u16 = 0x1209; // pid.codes (change to allocated PID)
 #[allow(dead_code)]
 const RPBRIDGE_USB_PID: u16 = 0xFFFE; // pid.codes testing range
+
+pub(crate) struct RpbridgeDriver;
 
 #[vtable]
 impl kernel::usb::Driver for RpbridgeDriver {
@@ -97,8 +308,8 @@ impl kernel::usb::Driver for RpbridgeDriver {
 
     const ID_TABLE: kernel::usb::IdTable<Self::IdInfo> =
         &kernel::usb::IdTable::new(&[
-            // Match any interface of the composite device — we filter on
-            // class/subclass inside probe().
+            // Match any interface of the composite device — we filter
+            // on class/subclass inside probe().
             kernel::usb::DeviceId::new(RPBRIDGE_USB_VID, RPBRIDGE_USB_PID),
         ]);
 
@@ -106,30 +317,52 @@ impl kernel::usb::Driver for RpbridgeDriver {
         _intf: &kernel::usb::Interface,
         _id_info: Option<&Self::IdInfo>,
     ) -> Result<Arc<RpbridgeState>> {
-        pr_info!("rpbridge: probing a matched USB interface\n");
+        pr_info!("rpbridge: probing USB interface\n");
 
-        let state = Arc::try_new(RpbridgeState {
-            caps: Mutex::new(None),
-        })?;
+        let state = RpbridgeState::new()?;
 
-        // TODO §M1:
-        //   - discover bulk endpoints on this interface, reject if not
-        //     the vendor/RPBP pair
-        //   - allocate and anchor a pool of bulk-IN URBs
-        //   - send HELLO and fetch CAPABILITIES (CBOR)
-        //   - parse via crate::cap::Capabilities::from_cbor()
-        //   - for each advertised subsystem, spawn an auxiliary_device
-        //     under a name like "rpbridge-gpio", "rpbridge-i2c", etc.
+        // TODO §R4L-USB-BINDINGS: the probe() state machine sits here.
+        //
+        //   1. Walk _intf.endpoints(), pick the bulk-IN + bulk-OUT pair
+        //      with EP_CLASS=0xFF / SUBCLASS=0x52 ('R') — RPBP vendor.
+        //      If the interface is gs_usb (class 0xFF / subclass 0x43
+        //      'C'), return -ENODEV so the mainline gs_usb driver can
+        //      bind it instead.
+        //
+        //   2. Submit N (=4) bulk-IN URBs against state.urb_anchor.
+        //      Each completion calls state.dispatch_rx_frame().
+        //
+        //   3. Send HELLO on control channel with a CBOR payload
+        //      {"proto":[1,0,0], "host":{...}, "nonce":h'...'}.
+        //      Wait for HELLO reply (msg_type=0x00, channel=0, seq=0).
+        //
+        //   4. Send CMD_REQUEST{SYS, GET_CAPABILITIES}. Parse the
+        //      CBOR reply with crate::cap::Capabilities::from_cbor()
+        //      and store it in state.inner.caps.
+        //
+        //   5. For each bus in caps.buses with access ∈ {"vendor",
+        //      "cdc+vendor"}, call auxiliary_device_register on a
+        //      child whose name matches the subsystem class:
+        //
+        //          "rpbridge-gpio.N"  where N = caps.buses[i].idx
+        //          "rpbridge-i2c.N"
+        //          "rpbridge-spi.N"
+        //          "rpbridge-pwm.N"
+        //          "rpbridge-iio.N"
+        //
+        //      Each child auxiliary_driver is match'd by its own
+        //      id_table in {gpio,i2c,spi,pwm,iio}.rs.
+        //
+        //   6. UART and CAN are skipped explicitly (ADR-0006).
 
         Ok(state)
     }
 
     fn disconnect(_intf: &kernel::usb::Interface, _data: Arc<RpbridgeState>) {
         pr_info!("rpbridge: interface disconnected\n");
-        // TODO:
-        //   - usb_kill_anchored_urbs() on our URB anchor
-        //   - auxiliary_device_unregister() all children
-        //   - drop per-device state via Arc
+        // TODO §R4L-USB-BINDINGS:
+        //   usb_kill_anchored_urbs(&state.urb_anchor);
+        //   for child in state.aux_children { auxiliary_device_unregister(child) }
     }
 
     fn suspend(_intf: &kernel::usb::Interface, _msg: kernel::usb::Message)
@@ -143,8 +376,8 @@ impl kernel::usb::Driver for RpbridgeDriver {
     }
 }
 
-// Sanity checks — these tests run on the host when building with the
-// out-of-tree user-mode Linux kunit flow.
+/* ───── Self-tests ─────────────────────────────────────────────────── */
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,8 +389,7 @@ mod tests {
 
     #[test]
     fn crc32c_known_vector() {
-        // CRC-32C of ASCII "123456789" is 0xE3069283 per
-        // the RFC 3720 test vector.
+        // CRC-32C of ASCII "123456789" is 0xE3069283 per RFC 3720.
         assert_eq!(crc32c_slice(b"123456789"), 0xE306_9283);
     }
 

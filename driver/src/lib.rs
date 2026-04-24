@@ -31,6 +31,7 @@ use kernel::prelude::*;
 
 mod rpbp;
 mod cap;
+mod transport;
 mod core_driver;
 
 mod gpio;
