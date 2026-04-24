@@ -161,9 +161,24 @@ authoritative spec section.
 
 ## M6 — Second core + streaming
 
-- [ ] `src/core1/core1_main.{c,h}` — I/O scheduler
-- [ ] `src/core1/ipc_queues.{c,h}` — lock-free SPSC rings
-- [ ] RPBP stream channels wired to ADC / logic-capture producers
+- [x] `src/io_control/io_control.{c,h}` — Core-1 scheduler entry
+      (idle tick for now — anchors future ADC/logic services). Also
+      hosts the cross-core event pump for Core 0 (drains GPIO edge
+      events, emits RPBP events on channel 1). The directory is named
+      `io_control` rather than `core1` because it describes the
+      function, not the CPU.
+- [x] `src/io_control/ipc_queue.h` — header-only lock-free SPSC ring
+      primitive. Power-of-two slot count, fixed slot size, `__dmb()`
+      barriers around head/tail publishes. Safe for IRQ → main-loop
+      and Core 1 → Core 0 hand-off.
+- [x] GPIO edge WATCH / UNWATCH wired through — `cmd_gpio` accepts the
+      previously-reserved opcodes, IRQ installs a shared
+      gpio_irq_trampoline, edges land in the io_control GPIO ring,
+      main-loop pump emits RPBP EVENT frames on channel 1 with
+      payload `[subsys=0x03][event=0x00][pin][level][ts_us LE u32]`.
+- [ ] RPBP stream channels (dynamic channel alloc + credit accounting
+      + STREAM_DATA payload framing) — scaffold only; ADC IIO and
+      logic-capture producers land in M6b.
 
 ## M7 — Windows binding
 

@@ -38,6 +38,7 @@
 #include "peripherals/adc.h"
 #include "peripherals/can.h"
 #include "usb/gs_usb_glue.h"
+#include "io_control/io_control.h"
 
 /*
  * Watchdog timeout. Must comfortably exceed any expected host-initiated
@@ -295,6 +296,11 @@ int main(void)
     }
     gs_usb_glue_init();
 
+    /* Bring the second core online with the I/O scheduler. Core 1
+     * idles today; registered services (ADC streamer, TIME_SYNC
+     * emitter) hook in here once they land. */
+    io_control_start();
+
     /*
      * Enable the watchdog only after USB + RPBP are up, so the device
      * stays debuggable even if the USB stack takes unusually long to
@@ -317,6 +323,7 @@ int main(void)
         rpbp_transport_poll();
         cdc_glue_poll();
         gs_usb_glue_poll();
+        io_control_poll();
         watchdog_update();
 
         if (time_reached(next_led)) {

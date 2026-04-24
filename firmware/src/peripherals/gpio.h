@@ -99,6 +99,26 @@ int gpio_hw_set_mask(uint64_t mask, uint64_t values);
  */
 uint64_t gpio_hw_get_mask(uint64_t mask);
 
+/*
+ * Edge-watch — subscribe the GPIO IRQ to edge events on `pin`. Events
+ * land in the io_control GPIO ring and are emitted on RPBP channel 1
+ * (events) by the main-loop pump.
+ *
+ * `edges` is a bitmask:
+ *   bit 0 — rising
+ *   bit 1 — falling
+ * Passing 0 is equivalent to unwatch().
+ *
+ * Requires the pin to already be INPUT-claimed by the GPIO subsystem.
+ * Returns 0 on success, -RPBP_EPERM when the pin is not ours.
+ */
+#define GPIO_HW_WATCH_RISING   (1u << 0)
+#define GPIO_HW_WATCH_FALLING  (1u << 1)
+#define GPIO_HW_WATCH_BOTH     (GPIO_HW_WATCH_RISING | GPIO_HW_WATCH_FALLING)
+
+int gpio_hw_watch  (uint8_t pin, uint8_t edges);
+int gpio_hw_unwatch(uint8_t pin);
+
 #ifdef __cplusplus
 }
 #endif

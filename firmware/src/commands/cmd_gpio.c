@@ -180,12 +180,30 @@ enum rpbp_status cmd_gpio_dispatch(const struct rpbp_header *req,
     case RPBP_GPIO_GET:       return op_get      (req, args, args_len);
     case RPBP_GPIO_SET_MASK:  return op_set_mask (req, args, args_len);
     case RPBP_GPIO_GET_MASK:  return op_get_mask (req, args, args_len);
-    case RPBP_GPIO_WATCH:
-    case RPBP_GPIO_UNWATCH:
-        /* IRQ subscription lands with M6 (core1 + events channel). */
-        rpbp_reply_cmd(req, RPBP_SUBSYS_GPIO, opcode, RPBP_ENOTSUP,
-                       NULL, 0, false);
+    case RPBP_GPIO_WATCH: {
+        /* Args: [pin][edges] — edges bitmask GPIO_HW_WATCH_RISING |
+         * _FALLING. Matching WATCH wire format in gpio.md §WATCH. */
+        if (args_len != 2u) {
+            rpbp_reply_cmd(req, RPBP_SUBSYS_GPIO, opcode,
+                           RPBP_EMSGSIZE, NULL, 0, false);
+            return RPBP_OK;
+        }
+        int rc = gpio_hw_watch(args[0], args[1]);
+        rpbp_reply_cmd(req, RPBP_SUBSYS_GPIO, opcode,
+                       rc_to_status(rc), NULL, 0, false);
         return RPBP_OK;
+    }
+    case RPBP_GPIO_UNWATCH: {
+        if (args_len != 1u) {
+            rpbp_reply_cmd(req, RPBP_SUBSYS_GPIO, opcode,
+                           RPBP_EMSGSIZE, NULL, 0, false);
+            return RPBP_OK;
+        }
+        int rc = gpio_hw_unwatch(args[0]);
+        rpbp_reply_cmd(req, RPBP_SUBSYS_GPIO, opcode,
+                       rc_to_status(rc), NULL, 0, false);
+        return RPBP_OK;
+    }
     default:
         rpbp_reply_cmd(req, RPBP_SUBSYS_GPIO, opcode, RPBP_ENOENT,
                        NULL, 0, false);

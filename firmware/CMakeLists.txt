@@ -125,6 +125,9 @@ add_executable(rpbridge
     src/usb/cdc_glue.c
     src/usb/gs_usb_glue.c
 
+    # Core-1 I/O scheduler + cross-core IPC.
+    src/io_control/io_control.c
+
     # See firmware/TODO.md for remaining modules: I2C / SPI / GPIO /
     # PWM / ADC subsystem handlers, pin broker, CAN (can2040 + gs_usb),
     # core1 scheduler, PIO-based precision RS485 DE.
