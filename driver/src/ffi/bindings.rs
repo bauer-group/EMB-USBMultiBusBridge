@@ -92,6 +92,11 @@ extern "C" {
     pub fn rpbridge_intf_endpoint_address(intf: *mut usb_interface, i: c_int) -> u8;
     pub fn rpbridge_intf_endpoint_attributes(intf: *mut usb_interface, i: c_int) -> u8;
     pub fn rpbridge_intf_endpoint_max_packet(intf: *mut usb_interface, i: c_int) -> u16;
+
+    /// Returns the interface's own `struct device *`, for use as
+    /// `parent` when registering subsystem objects (gpio_chip,
+    /// i2c_adapter, …).
+    pub fn rpbridge_intf_parent_dev(intf: *mut usb_interface) -> *mut device;
 }
 
 /* ───── auxiliary_bus — include/linux/auxiliary_bus.h ──────────────── */

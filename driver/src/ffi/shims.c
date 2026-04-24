@@ -81,6 +81,18 @@ u16 rpbridge_intf_endpoint_max_packet(struct usb_interface *intf, int i)
 	return le16_to_cpu(intf->cur_altsetting->endpoint[i].desc.wMaxPacketSize);
 }
 
+/*
+ * Parent `struct device *` to register subsystem objects (gpio_chip,
+ * i2c_adapter, spi_controller, pwm_chip, iio_dev) under. We hand out
+ * the USB interface's own device — subsystems hang below it in
+ * /sys/bus/usb/devices/<bus>-<port>/<intf>/ which is exactly what
+ * libgpiod / i2c-tools / iio userland expects.
+ */
+struct device *rpbridge_intf_parent_dev(struct usb_interface *intf)
+{
+	return &intf->dev;
+}
+
 /* ───── wait_queue ────────────────────────────────────────────────── */
 
 void rpbridge_waitqueue_init(void *wq)
