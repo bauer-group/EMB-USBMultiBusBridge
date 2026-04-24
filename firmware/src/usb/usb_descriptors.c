@@ -20,6 +20,7 @@
 
 #include "version.h"
 #include "ms_os_20.h"
+#include "gs_usb_glue.h"
 
 #include <string.h>
 
@@ -234,16 +235,24 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
     const uint8_t req_recip = request->bmRequestType_bit.recipient;
     const uint8_t dir       = request->bmRequestType_bit.direction;
 
-    if (req_type  != TUSB_REQ_TYPE_VENDOR) return false;
-    if (dir       != TUSB_DIR_IN)          return false;
-    if (req_recip != TUSB_REQ_RCPT_DEVICE) return false;
+    if (req_type != TUSB_REQ_TYPE_VENDOR) return false;
 
-    if (request->bRequest == MS_OS_20_VENDOR_CODE &&
+    /* Device-recipient IN: MS OS 2.0 descriptor — Windows auto-binds
+     * WinUSB to our vendor interfaces via this path. */
+    if (req_recip == TUSB_REQ_RCPT_DEVICE && dir == TUSB_DIR_IN &&
+        request->bRequest == MS_OS_20_VENDOR_CODE &&
         request->wIndex   == MS_OS_20_DESCRIPTOR_INDEX) {
         const uint16_t cap = (uint16_t)desc_ms_os_20_len;
         const uint16_t len = request->wLength < cap ? request->wLength : cap;
         return tud_control_xfer(rhport, request,
                                 (void *)(uintptr_t)desc_ms_os_20, len);
+    }
+
+    /* Interface-recipient: gs_usb class requests on the CAN vendor
+     * interface land here. Delegate to gs_usb_glue which knows the
+     * wire protocol. */
+    if (req_recip == TUSB_REQ_RCPT_INTERFACE) {
+        return gs_usb_glue_control_xfer(rhport, stage, request);
     }
 
     /* Unknown vendor control request — stall the pipe. */

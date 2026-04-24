@@ -116,12 +116,14 @@ add_executable(rpbridge
     src/peripherals/gpio.c
     src/peripherals/pwm.c
     src/peripherals/adc.c
+    src/peripherals/can.c
 
     # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding,
-    # plus the CDC-ACM <-> UART byte-shuttle glue.
+    # plus the CDC-ACM <-> UART byte-shuttle glue and gs_usb (SocketCAN).
     src/usb/usb_descriptors.c
     src/usb/ms_os_20.c
     src/usb/cdc_glue.c
+    src/usb/gs_usb_glue.c
 
     # See firmware/TODO.md for remaining modules: I2C / SPI / GPIO /
     # PWM / ADC subsystem handlers, pin broker, CAN (can2040 + gs_usb),

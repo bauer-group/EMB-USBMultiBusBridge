@@ -46,6 +46,8 @@ M6.
 | `src/peripherals/gpio.{c,h}`          | User-GPIO subsystem with pin whitelist + 64-bit atomic mask ops. |
 | `src/peripherals/pwm.{c,h}`           | 12-slice PWM wrapper, shared between user subsystem and status LED. |
 | `src/peripherals/adc.{c,h}`           | RP2350 SAR-ADC wrapper (4 user channels + temperature sensor). |
+| `src/peripherals/can.{c,h}`           | CAN 2.0B via vendored can2040 on PIO0 (GP20/21).       |
+| `src/usb/gs_usb_glue.{c,h}`           | SocketCAN-compatible gs_usb protocol on vendor interface 1. |
 | `src/pio/uart_pio_tx.pio`             | PIO 8N1 TX program (8 cycles / bit).                   |
 | `src/pio/uart_pio_rx.pio`             | PIO 8N1 RX program with framing-error IRQ.             |
 

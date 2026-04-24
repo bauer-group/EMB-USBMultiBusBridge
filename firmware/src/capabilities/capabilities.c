@@ -71,7 +71,7 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 
 /* ───── Full capability map ──────────────────────────────────────────── */
 
-#define RPBRIDGE_FEATURE_COUNT  17
+#define RPBRIDGE_FEATURE_COUNT  19
 
 static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "cbor",
@@ -91,6 +91,8 @@ static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
     "gpio.mask-atomic",    /* 64-bit atomic bank write/read                    */
     "pwm.invert",          /* PWM polarity inversion                           */
     "adc.temp",            /* on-chip temperature sensor                       */
+    "can.classic",         /* CAN 2.0B via can2040 (PIO)                       */
+    "can.gs-usb",           /* SocketCAN-compatible on vendor interface 1       */
 };
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
@@ -142,7 +144,7 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
      * Pending: SPI, GPIO, PWM, ADC, CAN, 1-Wire.
      */
     cbor_writer_text_cstr(&w, "buses");
-    cbor_writer_map(&w, 6);
+    cbor_writer_map(&w, 7);
 
     cbor_writer_text_cstr(&w, "uart");
     cbor_writer_array(&w, 4);
@@ -315,6 +317,21 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
         cbor_writer_map(&w, 2);
         cbor_writer_kv_uint(&w, "ch",     4);
         cbor_writer_kv_text(&w, "kind",   "temperature");
+    }
+
+    /* CAN — single bus via can2040 on PIO0. Surfaced to the host as
+     * a standard SocketCAN device over the gs_usb vendor interface;
+     * the RPBP protocol does not carry CAN frames directly. */
+    cbor_writer_text_cstr(&w, "can");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 6);
+        cbor_writer_kv_uint(&w, "idx",       0);
+        cbor_writer_kv_uint(&w, "tx_pin",    20);
+        cbor_writer_kv_uint(&w, "rx_pin",    21);
+        cbor_writer_kv_text(&w, "backend",   "pio");
+        cbor_writer_kv_text(&w, "transport", "gs_usb");
+        cbor_writer_kv_uint(&w, "max_bitrate_bps", 1000000);
     }
 
     /* ota descriptor */

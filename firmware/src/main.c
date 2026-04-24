@@ -36,6 +36,8 @@
 #include "peripherals/gpio.h"
 #include "peripherals/pwm.h"
 #include "peripherals/adc.h"
+#include "peripherals/can.h"
+#include "usb/gs_usb_glue.h"
 
 /*
  * Watchdog timeout. Must comfortably exceed any expected host-initiated
@@ -286,6 +288,12 @@ int main(void)
     if (adc_hw_init() != 0) {
         printf("rpbridge: ADC init failed (pin conflict)\n");
     }
+    /* CAN: 500 kbit/s default (automotive-friendly). Host can re-tune
+     * via gs_usb BITTIMING once SocketCAN brings the interface up. */
+    if (can_hw_init(500000u) != 0) {
+        printf("rpbridge: CAN init failed (pin conflict or can2040 missing)\n");
+    }
+    gs_usb_glue_init();
 
     /*
      * Enable the watchdog only after USB + RPBP are up, so the device
@@ -308,6 +316,7 @@ int main(void)
         tud_task();
         rpbp_transport_poll();
         cdc_glue_poll();
+        gs_usb_glue_poll();
         watchdog_update();
 
         if (time_reached(next_led)) {

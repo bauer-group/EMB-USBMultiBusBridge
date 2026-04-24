@@ -187,7 +187,7 @@ Live claims as of M3:
 | GP16                | `spi`         | SPI0 MISO                                          |
 | GP17                | `spi` (lazy)  | SPI0 CS (claimed on first XFER)                    |
 | GP18, GP19          | `spi`         | SPI0 SCK / MOSI                                    |
-| GP20, GP21          | reserved      | CAN TX / RX (claimed at M5)                        |
+| GP20, GP21          | `can`         | CAN 2.0B TX / RX (can2040 on PIO0)                 |
 | GP22..GP24          | `system`+`pwm`| RGB status LED (PWM-driven, 1 kHz)                 |
 | GP26..GP29          | `adc`         | ADC0..ADC3 (user header A0..A3)                    |
 | GP30, GP31          | `gpio`/`pwm`  | User header — lazy claim on CONFIGURE              |

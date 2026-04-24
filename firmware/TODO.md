@@ -145,9 +145,19 @@ authoritative spec section.
 
 ## M5 — CAN over PIO (can2040)
 
-- [ ] `src/pio/can2040_glue.{c,h}` — C ↔ can2040 callback bridge
-- [ ] `src/usb/gs_usb_glue.c` — gs_usb-compatible frame translation
-      on the second vendor interface
+- [x] `src/peripherals/can.{c,h}` — thin wrapper around vendored
+      can2040. Claims PIO0 (3 SMs), GP20 TX / GP21 RX, 500 kbit/s
+      default, bitrate reconfigurable via gs_usb BITTIMING. RX/TX
+      notifications plumbed via IRQ callback → lock-free SPSC ring.
+- [x] `src/usb/gs_usb_glue.{c,h}` — gs_usb (candleLight-compatible)
+      protocol on vendor interface 1. Implements the classic-CAN
+      subset (no FD / no timestamps) covering 100 % of SocketCAN's
+      needs: HOST_FORMAT, DEVICE_CONFIG, BT_CONST, BITTIMING, MODE
+      (start / reset), IDENTIFY. Echo-id FIFO for TX confirmation.
+      Linux mainline `gs_usb` driver binds automatically; Windows
+      via `candle_api` through our MS OS 2.0 descriptors.
+- [x] Capability map advertises `buses.can` (GP20/21, backend=pio,
+      transport=gs_usb) and feature flags `can.classic`, `can.gs-usb`.
 
 ## M6 — Second core + streaming
 
