@@ -23,9 +23,16 @@
 #include "rpbp/rpbp_cbor.h"
 #include "version.h"
 
+#include "pico.h"             /* board feature flags */
 #include "pico/unique_id.h"
 
 #include <string.h>
+
+/* ───── Board identity strings (from board header) ───────────────────── */
+
+#ifndef RPBRIDGE_BOARD_NAME
+#  define RPBRIDGE_BOARD_NAME  "rpbridge-rev-B"
+#endif
 
 /* ───── Serial number helper ─────────────────────────────────────────── */
 
@@ -51,7 +58,7 @@ static void emit_identity_common(struct cbor_writer *w)
     cbor_writer_uint(w, RPBP_VERSION_PATCH);
 
     cbor_writer_kv_text(w, "fw",     RPBRIDGE_GIT_DESCRIBE);
-    cbor_writer_kv_text(w, "board",  "rpbridge-rev-B");
+    cbor_writer_kv_text(w, "board",  RPBRIDGE_BOARD_NAME);
     cbor_writer_kv_bytes(w, "serial", serial, sizeof(serial));
 }
 
@@ -69,33 +76,35 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
     return cbor_writer_ok(&w) ? cbor_writer_used(&w) : 0;
 }
 
-/* ───── Full capability map ──────────────────────────────────────────── */
+/* ───── Full capability map ──────────────────────────────────────────── *
+ *
+ * Feature list, bus list, and per-bus entries are all variant-driven
+ * via the active board header's RPBRIDGE_HAVE_* flags. The CBOR
+ * arrays carry definite lengths so we compute counts at compile time
+ * and emit the matching number of entries.
+ */
 
-#define RPBRIDGE_FEATURE_COUNT  21
+/* Optional features — toggled by the board header. */
+#define FEAT_UART_RS232      RPBRIDGE_HAVE_RS232_PHY
+#define FEAT_UART_RS485      RPBRIDGE_HAVE_RS485_PHY
+#define FEAT_UART_PIO_8N1    RPBRIDGE_HAVE_PIO_UART
+#define FEAT_HAVE_CAN        RPBRIDGE_HAVE_CAN
+#define FEAT_HAVE_I2C1       RPBRIDGE_HAVE_I2C1
+#define FEAT_HAVE_SPI1       RPBRIDGE_HAVE_SPI1
 
-static const char *const k_features[RPBRIDGE_FEATURE_COUNT] = {
-    "cbor",
-    "credit-fc",
-    "events",
-    "time-sync",
-    "crc32c.sw",           /* software CRC for v1; hw DMA SNIFFER path pending */
-    "firmware-update",
-    "uart.ttl",            /* both uart instances can drive TTL                */
-    "uart.rs232",          /* UART0 phy-bank: MAX3232                          */
-    "uart.rs485",          /* UART0 phy-bank: SN65HVD72 + software DE          */
-    "uart.pio.8n1-only",   /* PIO-UART framing is hard-wired to 8N1            */
-    "i2c.100k",            /* I²C Standard-mode                                */
-    "i2c.400k",            /* I²C Fast-mode                                    */
-    "i2c.1m",              /* I²C Fast-mode Plus                               */
-    "spi.mode-0-3",        /* SPI modes 0..3 (CPOL/CPHA)                       */
-    "gpio.mask-atomic",    /* 64-bit atomic bank write/read                    */
-    "pwm.invert",          /* PWM polarity inversion                           */
-    "adc.temp",            /* on-chip temperature sensor                       */
-    "adc.stream",          /* continuous ADC sampling via dynamic RPBP channel */
-    "can.classic",         /* CAN 2.0B via can2040 (PIO)                       */
-    "can.gs-usb",          /* SocketCAN-compatible on vendor interface 1       */
-    "can.hw-timestamp",    /* gs_usb GS_CAN_FEATURE_HW_TIMESTAMP (µs, 32-bit)  */
-};
+/* Always-on features count. Whenever you add or remove a string in
+ * the always-on block of `rpbridge_capabilities_emit`, update this
+ * constant — the CBOR array length must match. */
+#define RPBRIDGE_BASE_FEATURE_COUNT  15u
+
+/* Counted at compile time so cbor_writer_array() gets the right N. */
+#define RPBRIDGE_FEATURE_COUNT (                                  \
+        RPBRIDGE_BASE_FEATURE_COUNT                                \
+      + (FEAT_UART_RS232    ? 1 : 0)                              \
+      + (FEAT_UART_RS485    ? 1 : 0)                              \
+      + (FEAT_UART_PIO_8N1  ? 1 : 0)                              \
+      + (FEAT_HAVE_CAN      ? 3 : 0)   /* classic + gs-usb + hw-ts */ \
+)
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
 {
@@ -128,93 +137,125 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     cbor_writer_kv_uint(&w, "max_streams",    16);
     cbor_writer_kv_uint(&w, "max_reassembled", 64 * 1024);
 
-    /* features: string array */
+    /* features: string array, board-flag driven. */
     cbor_writer_text_cstr(&w, "features");
     cbor_writer_array(&w, RPBRIDGE_FEATURE_COUNT);
-    for (size_t i = 0; i < RPBRIDGE_FEATURE_COUNT; ++i) {
-        cbor_writer_text_cstr(&w, k_features[i]);
-    }
+
+    /* Always-on (RPBRIDGE_BASE_FEATURE_COUNT = 15) — protocol-stack
+     * capabilities + universally-supported subsystem features. Order
+     * intentional, mirrors the docs/protocol/capabilities.md
+     * "feature ladder". Update RPBRIDGE_BASE_FEATURE_COUNT in
+     * lock-step with any add/remove here. */
+    cbor_writer_text_cstr(&w, "cbor");                      /*  1 */
+    cbor_writer_text_cstr(&w, "credit-fc");                 /*  2 */
+    cbor_writer_text_cstr(&w, "events");                    /*  3 */
+    cbor_writer_text_cstr(&w, "time-sync");                 /*  4 */
+    cbor_writer_text_cstr(&w, "crc32c.sw");                 /*  5 */
+    cbor_writer_text_cstr(&w, "firmware-update");           /*  6 */
+    cbor_writer_text_cstr(&w, "uart.ttl");                  /*  7 */
+    cbor_writer_text_cstr(&w, "i2c.100k");                  /*  8 */
+    cbor_writer_text_cstr(&w, "i2c.400k");                  /*  9 */
+    cbor_writer_text_cstr(&w, "i2c.1m");                    /* 10 */
+    cbor_writer_text_cstr(&w, "spi.mode-0-3");              /* 11 */
+    cbor_writer_text_cstr(&w, "gpio.mask-atomic");          /* 12 */
+    cbor_writer_text_cstr(&w, "pwm.invert");                /* 13 */
+    cbor_writer_text_cstr(&w, "adc.temp");                  /* 14 */
+    cbor_writer_text_cstr(&w, "adc.stream");                /* 15 */
+
+    /* Optional features (board-flag gated). */
+#if FEAT_UART_RS232
+    cbor_writer_text_cstr(&w, "uart.rs232");
+#endif
+#if FEAT_UART_RS485
+    cbor_writer_text_cstr(&w, "uart.rs485");
+#endif
+#if FEAT_UART_PIO_8N1
+    cbor_writer_text_cstr(&w, "uart.pio.8n1-only");
+#endif
+#if FEAT_HAVE_CAN
+    cbor_writer_text_cstr(&w, "can.classic");
+    cbor_writer_text_cstr(&w, "can.gs-usb");
+    cbor_writer_text_cstr(&w, "can.hw-timestamp");
+#endif
 
     /*
      * buses: one entry per bus family, each a flat array of host-
-     * visible instances. For UART we advertise one entry per CDC-ACM
-     * — three share the UART0 HW backend (one per phy in the phy-
-     * bank) so a host can pick the physical layer by opening the
-     * correctly-named virtual COM port without ever touching RPBP.
-     * The firmware auto-selects the transceiver from whichever CDC
-     * has DTR asserted (see docs/protocol/subsystems/uart.md).
-     *
-     * Pending: SPI, GPIO, PWM, ADC, CAN, 1-Wire.
+     * visible instances. UART entries reflect what's actually
+     * compiled in: TTL on UART0 HW is universal, RS232/RS485 require
+     * the populated MAX3232/SN65HVD72 (RPBRIDGE_HAVE_RS232/485_PHY),
+     * and the 4th CDC (PIO-UART) requires RPBRIDGE_HAVE_PIO_UART.
      */
     cbor_writer_text_cstr(&w, "buses");
     cbor_writer_map(&w, 7);
 
-    cbor_writer_text_cstr(&w, "uart");
-    cbor_writer_array(&w, 4);
+#define UART_BUS_COUNT (1 /* TTL */                          \
+                      + (FEAT_UART_RS232    ? 1 : 0)         \
+                      + (FEAT_UART_RS485    ? 1 : 0)         \
+                      + (FEAT_UART_PIO_8N1  ? 1 : 0))
 
-    /* CDC #0 — UART0 HW via MAX3232 (RS232). */
+    cbor_writer_text_cstr(&w, "uart");
+    cbor_writer_array(&w, UART_BUS_COUNT);
+
+    /* CDC index assignment: phys come first in fixed order
+     * (RS232=0, RS485=1, TTL=2 OR if no phys, TTL=0), then
+     * PIO-UART last. Matches what cdc_glue.c expects. */
     {
+        unsigned cdc_idx = 0;
+#if FEAT_UART_RS232
         cbor_writer_map(&w, 5);
         cbor_writer_kv_uint(&w, "idx",      0);
-        cbor_writer_kv_uint(&w, "cdc",      0);
+        cbor_writer_kv_uint(&w, "cdc",      cdc_idx++);
         cbor_writer_kv_text(&w, "backend",  "hw");
         cbor_writer_kv_text(&w, "phy",      "rs232");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
-    }
-
-    /* CDC #1 — UART0 HW via SN65HVD72 (RS485, auto DE on GP6). */
-    {
+#endif
+#if FEAT_UART_RS485
         cbor_writer_map(&w, 6);
         cbor_writer_kv_uint(&w, "idx",      0);
-        cbor_writer_kv_uint(&w, "cdc",      1);
+        cbor_writer_kv_uint(&w, "cdc",      cdc_idx++);
         cbor_writer_kv_text(&w, "backend",  "hw");
         cbor_writer_kv_text(&w, "phy",      "rs485");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
-        cbor_writer_kv_uint(&w, "de_pin",   6);
-    }
-
-    /* CDC #2 — UART0 HW direct-drive TTL (header #1). */
-    {
+        cbor_writer_kv_uint(&w, "de_pin",   RPBRIDGE_RS485_DE_PIN);
+#endif
+        /* TTL on UART0 HW — every variant has this. */
         cbor_writer_map(&w, 5);
         cbor_writer_kv_uint(&w, "idx",      0);
-        cbor_writer_kv_uint(&w, "cdc",      2);
+        cbor_writer_kv_uint(&w, "cdc",      cdc_idx++);
         cbor_writer_kv_text(&w, "backend",  "hw");
         cbor_writer_kv_text(&w, "phy",      "ttl");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
-    }
-
-    /* CDC #3 — PIO-UART on GP33/GP36 (TTL-only, header #2).
-     * Carries an explicit `framing` array so hosts don't have to rely
-     * on the `"uart.pio.8n1-only"` feature flag alone — the PIO
-     * programs are hard-wired to 8N1 and SetLineCoding requests for
-     * other framings are clamped on-device (see uart_pio.h). */
-    {
+#if FEAT_UART_PIO_8N1
+        /* PIO-UART (4th CDC). Carries an explicit `framing` array
+         * because the PIO programs are hard-wired to 8N1 and
+         * SetLineCoding requests for other framings are clamped
+         * on-device (see uart_pio.h). */
         cbor_writer_map(&w, 6);
         cbor_writer_kv_uint(&w, "idx",      1);
-        cbor_writer_kv_uint(&w, "cdc",      3);
+        cbor_writer_kv_uint(&w, "cdc",      cdc_idx++);
         cbor_writer_kv_text(&w, "backend",  "pio");
         cbor_writer_kv_text(&w, "phy",      "ttl");
         cbor_writer_kv_uint(&w, "max_baud", 3000000);
         cbor_writer_text_cstr(&w, "framing");
         cbor_writer_array(&w, 1);
         cbor_writer_text_cstr(&w, "8n1");
+#endif
+        (void)cdc_idx;
     }
 
     /*
-     * I²C — two HW-backed buses on Qwiic headers + a 4-pin
-     * break-out. Each entry carries the canonical freq ladder
-     * rather than a single max_freq so hosts can pick a clock the
-     * slaves on that bus can actually sustain.
+     * I²C — bus 0 universally; bus 1 only on RP2350B (board-gated).
      */
+#define I2C_BUS_COUNT (1 + (FEAT_HAVE_I2C1 ? 1 : 0))
     cbor_writer_text_cstr(&w, "i2c");
-    cbor_writer_array(&w, 2);
+    cbor_writer_array(&w, I2C_BUS_COUNT);
 
-    /* I²C #0 — Qwiic 1+2 + header on GP2/GP3. */
+    /* I²C #0 — Qwiic 1+2 + header. */
     {
         cbor_writer_map(&w, 5);
         cbor_writer_kv_uint(&w, "idx",      0);
-        cbor_writer_kv_uint(&w, "sda_pin",  2);
-        cbor_writer_kv_uint(&w, "scl_pin",  3);
+        cbor_writer_kv_uint(&w, "sda_pin",  RPBRIDGE_I2C0_SDA_PIN);
+        cbor_writer_kv_uint(&w, "scl_pin",  RPBRIDGE_I2C0_SCL_PIN);
         cbor_writer_kv_uint(&w, "max_freq", 1000000);
         cbor_writer_text_cstr(&w, "freqs");
         cbor_writer_array(&w, 3);
@@ -223,12 +264,13 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
         cbor_writer_uint(&w, 1000000);
     }
 
-    /* I²C #1 — Qwiic 3 + header on GP34/GP35. */
+#if FEAT_HAVE_I2C1
+    /* I²C #1 — Qwiic 3 + header (rev-B only). */
     {
         cbor_writer_map(&w, 5);
         cbor_writer_kv_uint(&w, "idx",      1);
-        cbor_writer_kv_uint(&w, "sda_pin",  34);
-        cbor_writer_kv_uint(&w, "scl_pin",  35);
+        cbor_writer_kv_uint(&w, "sda_pin",  RPBRIDGE_I2C1_SDA_PIN);
+        cbor_writer_kv_uint(&w, "scl_pin",  RPBRIDGE_I2C1_SCL_PIN);
         cbor_writer_kv_uint(&w, "max_freq", 1000000);
         cbor_writer_text_cstr(&w, "freqs");
         cbor_writer_array(&w, 3);
@@ -236,106 +278,129 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
         cbor_writer_uint(&w, 400000);
         cbor_writer_uint(&w, 1000000);
     }
+#endif
 
-    /* SPI — two HW-backed buses with their canonical pin layout. */
+    /* SPI — bus 0 universally; bus 1 board-gated. */
+#define SPI_BUS_COUNT (1 + (FEAT_HAVE_SPI1 ? 1 : 0))
     cbor_writer_text_cstr(&w, "spi");
-    cbor_writer_array(&w, 2);
+    cbor_writer_array(&w, SPI_BUS_COUNT);
 
-    /* SPI #0 — PMOD (single CS on GP17, user IRQ on GP9). */
+    /* SPI #0 — PMOD (single CS on PICO_DEFAULT_SPI_CSN_PIN). */
     {
-        cbor_writer_map(&w, 7);
+        cbor_writer_map(&w, 6);
         cbor_writer_kv_uint(&w, "idx",      0);
-        cbor_writer_kv_uint(&w, "sck_pin",  18);
-        cbor_writer_kv_uint(&w, "mosi_pin", 19);
-        cbor_writer_kv_uint(&w, "miso_pin", 16);
+        cbor_writer_kv_uint(&w, "sck_pin",  RPBRIDGE_SPI0_SCK_PIN);
+        cbor_writer_kv_uint(&w, "mosi_pin", RPBRIDGE_SPI0_MOSI_PIN);
+        cbor_writer_kv_uint(&w, "miso_pin", RPBRIDGE_SPI0_MISO_PIN);
         cbor_writer_kv_uint(&w, "max_freq", 62500000);
         cbor_writer_text_cstr(&w, "cs_pins");
         cbor_writer_array(&w, 1);
-        cbor_writer_uint(&w, 17);
-        cbor_writer_kv_uint(&w, "int_pin",  9);
+        cbor_writer_uint(&w, PICO_DEFAULT_SPI_CSN_PIN);
     }
-    /* SPI #1 — Breakout with 3 CS lines. */
+
+#if FEAT_HAVE_SPI1
+    /* SPI #1 — Breakout with 3 CS lines (rev-B only).
+     * CS pins are board-defined for forward compatibility. */
+#  ifndef RPBRIDGE_SPI1_CS0_PIN
+#    define RPBRIDGE_SPI1_CS0_PIN  13u
+#  endif
+#  ifndef RPBRIDGE_SPI1_CS1_PIN
+#    define RPBRIDGE_SPI1_CS1_PIN  14u
+#  endif
+#  ifndef RPBRIDGE_SPI1_CS2_PIN
+#    define RPBRIDGE_SPI1_CS2_PIN  15u
+#  endif
     {
         cbor_writer_map(&w, 6);
         cbor_writer_kv_uint(&w, "idx",      1);
-        cbor_writer_kv_uint(&w, "sck_pin",  10);
-        cbor_writer_kv_uint(&w, "mosi_pin", 11);
-        cbor_writer_kv_uint(&w, "miso_pin", 12);
+        cbor_writer_kv_uint(&w, "sck_pin",  RPBRIDGE_SPI1_SCK_PIN);
+        cbor_writer_kv_uint(&w, "mosi_pin", RPBRIDGE_SPI1_MOSI_PIN);
+        cbor_writer_kv_uint(&w, "miso_pin", RPBRIDGE_SPI1_MISO_PIN);
         cbor_writer_kv_uint(&w, "max_freq", 62500000);
         cbor_writer_text_cstr(&w, "cs_pins");
         cbor_writer_array(&w, 3);
-        cbor_writer_uint(&w, 13);
-        cbor_writer_uint(&w, 14);
-        cbor_writer_uint(&w, 15);
+        cbor_writer_uint(&w, RPBRIDGE_SPI1_CS0_PIN);
+        cbor_writer_uint(&w, RPBRIDGE_SPI1_CS1_PIN);
+        cbor_writer_uint(&w, RPBRIDGE_SPI1_CS2_PIN);
     }
+#endif
 
-    /* GPIO — single host-exposed bank, pins listed explicitly so the
-     * host can pre-validate requests without a round-trip to LIST. */
+    /* GPIO — single host-exposed bank, pins listed from the board's
+     * RPBRIDGE_USER_GPIO_PIN_LIST so hosts can pre-validate requests
+     * without a LIST round-trip. */
     cbor_writer_text_cstr(&w, "gpio");
     cbor_writer_array(&w, 1);
     {
+        static const uint8_t k_gpio_pins[RPBRIDGE_USER_GPIO_PIN_COUNT] =
+            RPBRIDGE_USER_GPIO_PIN_LIST;
         cbor_writer_map(&w, 2);
         cbor_writer_kv_uint(&w, "idx",    0);
         cbor_writer_text_cstr(&w, "pins");
-        cbor_writer_array(&w, 11);
-        cbor_writer_uint(&w, 30); cbor_writer_uint(&w, 31);
-        cbor_writer_uint(&w, 37); cbor_writer_uint(&w, 38);
-        cbor_writer_uint(&w, 39); cbor_writer_uint(&w, 40);
-        cbor_writer_uint(&w, 41); cbor_writer_uint(&w, 42);
-        cbor_writer_uint(&w, 43); cbor_writer_uint(&w, 44);
-        cbor_writer_uint(&w, 45);
+        cbor_writer_array(&w, RPBRIDGE_USER_GPIO_PIN_COUNT);
+        for (size_t i = 0; i < RPBRIDGE_USER_GPIO_PIN_COUNT; ++i) {
+            cbor_writer_uint(&w, k_gpio_pins[i]);
+        }
     }
 
-    /* PWM — user-exposed pins only (the LED channels are internal). */
+    /* PWM — user-exposed pins from RPBRIDGE_USER_PWM_PIN_LIST. */
     cbor_writer_text_cstr(&w, "pwm");
     cbor_writer_array(&w, 1);
     {
+        static const uint8_t k_pwm_pins[RPBRIDGE_USER_PWM_PIN_COUNT] =
+            RPBRIDGE_USER_PWM_PIN_LIST;
         cbor_writer_map(&w, 3);
         cbor_writer_kv_uint(&w, "idx",      0);
         cbor_writer_kv_uint(&w, "max_freq", 62500000);
         cbor_writer_text_cstr(&w, "pins");
-        cbor_writer_array(&w, 6);
-        cbor_writer_uint(&w, 30); cbor_writer_uint(&w, 31);
-        cbor_writer_uint(&w, 37); cbor_writer_uint(&w, 38);
-        cbor_writer_uint(&w, 39); cbor_writer_uint(&w, 40);
+        cbor_writer_array(&w, RPBRIDGE_USER_PWM_PIN_COUNT);
+        for (size_t i = 0; i < RPBRIDGE_USER_PWM_PIN_COUNT; ++i) {
+            cbor_writer_uint(&w, k_pwm_pins[i]);
+        }
     }
 
-    /* ADC — four user channels plus the on-chip temperature sensor. */
+    /* ADC — external channels from RPBRIDGE_ADC_CHN_PIN + on-chip
+     * temperature sensor. */
     cbor_writer_text_cstr(&w, "adc");
     cbor_writer_array(&w, 1);
     {
+        static const uint8_t k_adc_pins[RPBRIDGE_ADC_EXT_CHANNEL_COUNT] = {
+            RPBRIDGE_ADC_CH0_PIN, RPBRIDGE_ADC_CH1_PIN,
+            RPBRIDGE_ADC_CH2_PIN, RPBRIDGE_ADC_CH3_PIN,
+        };
         cbor_writer_map(&w, 4);
         cbor_writer_kv_uint(&w, "idx",       0);
         cbor_writer_kv_uint(&w, "vref_mv",   3300);
         cbor_writer_kv_uint(&w, "resolution_bits", 12);
         cbor_writer_text_cstr(&w, "channels");
-        cbor_writer_array(&w, 5);
-        /* Each channel entry: [idx, gp_pin | -1 for internal, kind] */
-        for (int i = 0; i < 4; ++i) {
+        cbor_writer_array(&w, RPBRIDGE_ADC_EXT_CHANNEL_COUNT + 1u);
+        for (size_t i = 0; i < RPBRIDGE_ADC_EXT_CHANNEL_COUNT; ++i) {
             cbor_writer_map(&w, 3);
-            cbor_writer_kv_uint(&w, "ch",     (uint64_t)i);
-            cbor_writer_kv_uint(&w, "gp",     (uint64_t)(26 + i));
-            cbor_writer_kv_text(&w, "kind",   "external");
+            cbor_writer_kv_uint(&w, "ch",   (uint64_t)i);
+            cbor_writer_kv_uint(&w, "gp",   (uint64_t)k_adc_pins[i]);
+            cbor_writer_kv_text(&w, "kind", "external");
         }
         cbor_writer_map(&w, 2);
-        cbor_writer_kv_uint(&w, "ch",     4);
+        cbor_writer_kv_uint(&w, "ch",     RPBRIDGE_ADC_EXT_CHANNEL_COUNT);
         cbor_writer_kv_text(&w, "kind",   "temperature");
     }
 
-    /* CAN — single bus via can2040 on PIO0. Surfaced to the host as
-     * a standard SocketCAN device over the gs_usb vendor interface;
-     * the RPBP protocol does not carry CAN frames directly. */
+    /* CAN — single bus via can2040 on PIO0 when present. Surfaced to
+     * the host as a standard SocketCAN device over the gs_usb vendor
+     * interface; the RPBP protocol does not carry CAN frames directly. */
+#define CAN_BUS_COUNT (FEAT_HAVE_CAN ? 1 : 0)
     cbor_writer_text_cstr(&w, "can");
-    cbor_writer_array(&w, 1);
+    cbor_writer_array(&w, CAN_BUS_COUNT);
+#if FEAT_HAVE_CAN
     {
         cbor_writer_map(&w, 6);
         cbor_writer_kv_uint(&w, "idx",       0);
-        cbor_writer_kv_uint(&w, "tx_pin",    20);
-        cbor_writer_kv_uint(&w, "rx_pin",    21);
+        cbor_writer_kv_uint(&w, "tx_pin",    RPBRIDGE_CAN_TX_PIN);
+        cbor_writer_kv_uint(&w, "rx_pin",    RPBRIDGE_CAN_RX_PIN);
         cbor_writer_kv_text(&w, "backend",   "pio");
         cbor_writer_kv_text(&w, "transport", "gs_usb");
         cbor_writer_kv_uint(&w, "max_bitrate_bps", 1000000);
     }
+#endif
 
     /*
      * access — where each subsystem is reachable from the host
