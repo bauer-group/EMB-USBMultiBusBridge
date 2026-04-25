@@ -121,9 +121,18 @@ struct i2c_hw_stats {
 
 const struct i2c_hw_stats *i2c_hw_stats(i2c_hw_instance_t instance);
 
-/* How many instances the firmware manages. Defined here so the
- * capability-map emitter can enumerate them without hard-coding. */
-#define I2C_HW_NUM_INSTANCES      2u
+/* How many instances the firmware manages. The board header decides
+ * via RPBRIDGE_HAVE_I2C1: rev-B (RP2350B QFN-80) exposes both buses;
+ * Pi Pico 2 (RP2350A QFN-60) exposes only bus 0. */
+#include "pico.h"
+#ifndef RPBRIDGE_HAVE_I2C1
+#  define RPBRIDGE_HAVE_I2C1 1
+#endif
+#if RPBRIDGE_HAVE_I2C1
+#  define I2C_HW_NUM_INSTANCES    2u
+#else
+#  define I2C_HW_NUM_INSTANCES    1u
+#endif
 
 #ifdef __cplusplus
 }

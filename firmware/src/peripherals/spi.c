@@ -22,8 +22,14 @@ struct spi_pins {
 };
 
 static const struct spi_pins g_pins[SPI_HW_NUM_INSTANCES] = {
-    { .sck = 18u, .mosi = 19u, .miso = 16u },   /* SPI0 — PMOD      */
-    { .sck = 10u, .mosi = 11u, .miso = 12u },   /* SPI1 — Breakout  */
+    { .sck  = RPBRIDGE_SPI0_SCK_PIN,
+      .mosi = RPBRIDGE_SPI0_MOSI_PIN,
+      .miso = RPBRIDGE_SPI0_MISO_PIN },   /* SPI0 — PMOD                    */
+#if RPBRIDGE_HAVE_SPI1
+    { .sck  = RPBRIDGE_SPI1_SCK_PIN,
+      .mosi = RPBRIDGE_SPI1_MOSI_PIN,
+      .miso = RPBRIDGE_SPI1_MISO_PIN },   /* SPI1 — Breakout (rev-B only)   */
+#endif
 };
 
 struct spi_state {

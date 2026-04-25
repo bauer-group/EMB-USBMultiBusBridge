@@ -35,7 +35,19 @@ extern "C" {
 
 typedef uint8_t spi_hw_instance_t;
 
-#define SPI_HW_NUM_INSTANCES  2u
+/* SPI #1 (the breakout-header bus with 3 chip selects) is conditional
+ * on the board: rev-B (RP2350B QFN-80) ships both buses; Pi Pico 2
+ * (RP2350A QFN-60) does not bring out the SPI #1 pins on the user
+ * header layout we ship and so collapses to one bus. */
+#include "pico.h"
+#ifndef RPBRIDGE_HAVE_SPI1
+#  define RPBRIDGE_HAVE_SPI1 1
+#endif
+#if RPBRIDGE_HAVE_SPI1
+#  define SPI_HW_NUM_INSTANCES  2u
+#else
+#  define SPI_HW_NUM_INSTANCES  1u
+#endif
 
 /* Mode bits — match RPBP wire values (rpbp.h RPBP_SPI_MODE_*). */
 #define SPI_HW_MODE_CPHA        (1u << 0)

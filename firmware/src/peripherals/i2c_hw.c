@@ -96,10 +96,22 @@ int i2c_hw_init(i2c_hw_instance_t instance,
 
 int i2c_hw_init_all(void)
 {
-    /* Defaults follow hardware-design.md §6 and the board header. */
-    int rc0 = i2c_hw_init(0u,  2u,  3u, I2C_HW_FREQ_STD);
-    int rc1 = i2c_hw_init(1u, 34u, 35u, I2C_HW_FREQ_STD);
+    /* Pin map sourced from the board header. I²C #1 is conditional on
+     * RPBRIDGE_HAVE_I2C1 — on RP2350A (Pi Pico 2) the pins for
+     * bus 1 don't exist and we ship single-bus. */
+    int rc0 = i2c_hw_init(0u,
+                          RPBRIDGE_I2C0_SDA_PIN,
+                          RPBRIDGE_I2C0_SCL_PIN,
+                          I2C_HW_FREQ_STD);
+#if RPBRIDGE_HAVE_I2C1
+    int rc1 = i2c_hw_init(1u,
+                          RPBRIDGE_I2C1_SDA_PIN,
+                          RPBRIDGE_I2C1_SCL_PIN,
+                          I2C_HW_FREQ_STD);
     return (rc0 == 0 && rc1 == 0) ? 0 : -1;
+#else
+    return rc0;
+#endif
 }
 
 /* ───── Baud control ─────────────────────────────────────────────────── */
