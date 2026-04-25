@@ -148,12 +148,27 @@ impl TryFrom<u8> for Status {
     type Error = i32;
     fn try_from(v: u8) -> Result<Self, i32> {
         use Status::*;
+        // Known status codes round-trip exactly; unknown bytes from a
+        // newer firmware MINOR (e.g. a hypothetical EALREADY=16 added
+        // in v1.1) are gracefully degraded to `EIo` instead of being
+        // flagged as a protocol violation. RPBP v1 §16 promises that
+        // MINOR bumps are additive — including new status codes — so
+        // an old driver against new firmware MUST keep working. A
+        // generic EIO bubbling up to userland is the right fallback:
+        // the operation failed, the cause is "device-side, not in our
+        // table", and userland tools see a sensible errno instead of
+        // EPROTO confusion.
+        //
+        // The TryFrom signature is kept (rather than swapping to
+        // From) so call sites' `?` continues to compile unchanged
+        // and so a future opt-in strict mode can return Err here
+        // without a wider refactor.
         Ok(match v {
             0 => Ok, 1 => EAgain, 2 => EInval, 3 => EPerm, 4 => ENoent,
             5 => EIo, 6 => ETimedout, 7 => EMsgSize, 8 => ECrc, 9 => EProto,
             10 => ENotSup, 11 => EBusy, 12 => ECanceled, 13 => ENoSpc,
             14 => EOverflow, 15 => ENoDev,
-            _ => return Err(crate::errno::EPROTO),
+            _ => EIo,
         })
     }
 }
@@ -405,3 +420,31 @@ pub fn wr_le16(p: &mut [u8], v: u16) { p[..2].copy_from_slice(&v.to_le_bytes());
 pub fn wr_le32(p: &mut [u8], v: u32) { p[..4].copy_from_slice(&v.to_le_bytes()); }
 #[inline]
 pub fn wr_le64(p: &mut [u8], v: u64) { p[..8].copy_from_slice(&v.to_le_bytes()); }
+
+/* ───── Forward-compat tests ─────────────────────────────────────── */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_status_codes_round_trip() {
+        for v in 0u8..=15u8 {
+            assert!(Status::try_from(v).is_ok(),
+                    "status code {} must parse on the supported range", v);
+        }
+    }
+
+    #[test]
+    fn unknown_status_falls_back_to_eio_not_eproto() {
+        // Forward-compat: a future MINOR may add status codes 16+.
+        // Old drivers must surface them as a generic EIO instead of
+        // raising EPROTO (which would imply protocol corruption).
+        for v in 16u8..=255u8 {
+            let s = Status::try_from(v).expect("should never error");
+            assert!(matches!(s, Status::EIo),
+                    "unknown status {} should map to EIo, got {:?}", v, s);
+            assert_eq!(s.to_errno(), crate::errno::EIO);
+        }
+    }
+}
