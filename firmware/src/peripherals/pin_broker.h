@@ -19,12 +19,16 @@
  * report who holds what.
  *
  * Pin-number range:
- *   RP2354B (QFN-80) exposes GP0..GP47, so the broker tracks 48
- *   slots. Pin numbers ≥ 48 are rejected with -RPBP_EINVAL.
+ *   The slot count is board-defined (RPBRIDGE_PIN_BROKER_SLOTS).
+ *   RP2354B (QFN-80) exposes GP0..GP47 → 48 slots; RP2350A (QFN-60,
+ *   used on Pi Pico 2) exposes GP0..GP29 → 30 slots. Pin numbers
+ *   ≥ slot count are rejected with -RPBP_EINVAL.
  */
 
 #ifndef RPBRIDGE_PIN_BROKER_H
 #define RPBRIDGE_PIN_BROKER_H
+
+#include "pico.h"   /* pulls in the active board header */
 
 #include <stdint.h>
 #include <stddef.h>
@@ -34,7 +38,14 @@
 extern "C" {
 #endif
 
-#define PIN_BROKER_NUM_PINS    48u
+/* Defined by the active board header (firmware/boards/<board>.h).
+ * Defaulted here so out-of-tree builds without our headers still
+ * compile against the larger of the two supported packages. */
+#ifndef RPBRIDGE_PIN_BROKER_SLOTS
+#  define RPBRIDGE_PIN_BROKER_SLOTS 48u
+#endif
+
+#define PIN_BROKER_NUM_PINS    RPBRIDGE_PIN_BROKER_SLOTS
 
 /*
  * Who is holding the pin. Identifying the owner lets the broker

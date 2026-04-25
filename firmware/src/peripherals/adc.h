@@ -28,9 +28,18 @@
 extern "C" {
 #endif
 
+/* Pull RPBRIDGE_ADC_* from the active board header. Defaulted here
+ * so the ADC subsystem can be compiled standalone; the board header
+ * always overrides. */
+#include "pico.h"
+
+#ifndef RPBRIDGE_ADC_EXT_CHANNEL_COUNT
+#  define RPBRIDGE_ADC_EXT_CHANNEL_COUNT 4u
+#endif
+
 #define ADC_HW_VREF_MV        3300u
-#define ADC_HW_USER_CHANNELS  4u     /* A0..A3                     */
-#define ADC_HW_TEMP_CHANNEL   4u     /* on-chip temperature sensor */
+#define ADC_HW_USER_CHANNELS  RPBRIDGE_ADC_EXT_CHANNEL_COUNT
+#define ADC_HW_TEMP_CHANNEL   RPBRIDGE_ADC_EXT_CHANNEL_COUNT  /* on-chip sensor sits one past the last external */
 
 /* One-time module init — enables the ADC block, claims GP26..GP29
  * as ANALOG on the broker, and wires them as ADC inputs. Returns 0

@@ -14,7 +14,17 @@
 #include <stdint.h>
 
 #define ADC_HW_FULL_SCALE     4095u    /* 12-bit SAR */
-#define ADC_HW_GPIO_CH0       26u      /* first ADC-capable GPIO */
+
+/* Per-channel pin map sourced from the active board header. RP2350A
+ * and RP2350B both route the four ADC inputs to GP26..GP29, but the
+ * indirection via macros keeps a future board with a different
+ * ordering free to override. */
+static const uint8_t k_adc_pins[ADC_HW_USER_CHANNELS] = {
+    RPBRIDGE_ADC_CH0_PIN,
+    RPBRIDGE_ADC_CH1_PIN,
+    RPBRIDGE_ADC_CH2_PIN,
+    RPBRIDGE_ADC_CH3_PIN,
+};
 
 static bool g_initialised;
 
@@ -24,7 +34,7 @@ int adc_hw_init(void)
 
     adc_init();
     for (uint8_t ch = 0; ch < ADC_HW_USER_CHANNELS; ++ch) {
-        uint8_t pin = (uint8_t)(ADC_HW_GPIO_CH0 + ch);
+        uint8_t pin = k_adc_pins[ch];
         int rc = pin_broker_claim(pin, PIN_OWNER_ADC, PIN_FUNC_GPIO_ANALOG);
         if (rc < 0) return rc;
         adc_gpio_init(pin);
