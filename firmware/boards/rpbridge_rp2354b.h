@@ -85,7 +85,36 @@
 #define PICO_DEFAULT_UART_RX_PIN 5
 #endif
 
-/* ───── I²C defaults (bus 0 via Qwiic headers) ───────────────────────── */
+/* ───── Pin-broker capacity ──────────────────────────────────────────── */
+
+/* RP2354B (QFN-80) exposes GP0..GP47. The pin broker tracks one
+ * ownership slot per GPIO; matches the chip's full pin count. */
+#ifndef RPBRIDGE_PIN_BROKER_SLOTS
+#define RPBRIDGE_PIN_BROKER_SLOTS 48u
+#endif
+
+/* ───── UART0 phy-bank (RS232 / RS485 / TTL on a single HW UART) ────── */
+
+#ifndef RPBRIDGE_UART0_TX_PIN
+#define RPBRIDGE_UART0_TX_PIN  0u
+#endif
+#ifndef RPBRIDGE_UART0_RX_PIN
+#define RPBRIDGE_UART0_RX_PIN  1u
+#endif
+
+/* ───── PIO-UART (4th CDC, TTL only) ─────────────────────────────────── */
+
+#ifndef RPBRIDGE_HAVE_PIO_UART
+#define RPBRIDGE_HAVE_PIO_UART  1
+#endif
+#ifndef RPBRIDGE_PIO_UART_TX_PIN
+#define RPBRIDGE_PIO_UART_TX_PIN  33u
+#endif
+#ifndef RPBRIDGE_PIO_UART_RX_PIN
+#define RPBRIDGE_PIO_UART_RX_PIN  36u
+#endif
+
+/* ───── I²C — bus 0 (Qwiic 1+2 + 4-pin header) ───────────────────────── */
 
 #ifndef PICO_DEFAULT_I2C
 #define PICO_DEFAULT_I2C 0
@@ -96,8 +125,28 @@
 #ifndef PICO_DEFAULT_I2C_SCL_PIN
 #define PICO_DEFAULT_I2C_SCL_PIN 3
 #endif
+#ifndef RPBRIDGE_I2C0_SDA_PIN
+#define RPBRIDGE_I2C0_SDA_PIN  PICO_DEFAULT_I2C_SDA_PIN
+#endif
+#ifndef RPBRIDGE_I2C0_SCL_PIN
+#define RPBRIDGE_I2C0_SCL_PIN  PICO_DEFAULT_I2C_SCL_PIN
+#endif
 
-/* ───── SPI defaults (bus 0 via PMOD) ────────────────────────────────── */
+/* ───── I²C — bus 1 (Qwiic 3 + 4-pin header) ─────────────────────────── *
+ * Only present on RP2350B (QFN-80) — the SDA/SCL pins live above GP30
+ * which the QFN-60 RP2350A package does not bring out. */
+
+#ifndef RPBRIDGE_HAVE_I2C1
+#define RPBRIDGE_HAVE_I2C1  1
+#endif
+#ifndef RPBRIDGE_I2C1_SDA_PIN
+#define RPBRIDGE_I2C1_SDA_PIN  34u
+#endif
+#ifndef RPBRIDGE_I2C1_SCL_PIN
+#define RPBRIDGE_I2C1_SCL_PIN  35u
+#endif
+
+/* ───── SPI — bus 0 (PMOD header) ────────────────────────────────────── */
 
 #ifndef PICO_DEFAULT_SPI
 #define PICO_DEFAULT_SPI 0
@@ -114,9 +163,36 @@
 #ifndef PICO_DEFAULT_SPI_CSN_PIN
 #define PICO_DEFAULT_SPI_CSN_PIN 17
 #endif
+#ifndef RPBRIDGE_SPI0_SCK_PIN
+#define RPBRIDGE_SPI0_SCK_PIN  PICO_DEFAULT_SPI_SCK_PIN
+#endif
+#ifndef RPBRIDGE_SPI0_MOSI_PIN
+#define RPBRIDGE_SPI0_MOSI_PIN PICO_DEFAULT_SPI_TX_PIN
+#endif
+#ifndef RPBRIDGE_SPI0_MISO_PIN
+#define RPBRIDGE_SPI0_MISO_PIN PICO_DEFAULT_SPI_RX_PIN
+#endif
 
-/* ───── CAN (PIO0 dedicated) ─────────────────────────────────────────── */
+/* ───── SPI — bus 1 (Breakout header, 3 chip selects) ────────────────── */
 
+#ifndef RPBRIDGE_HAVE_SPI1
+#define RPBRIDGE_HAVE_SPI1  1
+#endif
+#ifndef RPBRIDGE_SPI1_SCK_PIN
+#define RPBRIDGE_SPI1_SCK_PIN  10u
+#endif
+#ifndef RPBRIDGE_SPI1_MOSI_PIN
+#define RPBRIDGE_SPI1_MOSI_PIN 11u
+#endif
+#ifndef RPBRIDGE_SPI1_MISO_PIN
+#define RPBRIDGE_SPI1_MISO_PIN 12u
+#endif
+
+/* ───── CAN (can2040 on PIO0, GP20/21) ───────────────────────────────── */
+
+#ifndef RPBRIDGE_HAVE_CAN
+#define RPBRIDGE_HAVE_CAN  1
+#endif
 #ifndef RPBRIDGE_CAN_TX_PIN
 #define RPBRIDGE_CAN_TX_PIN 20
 #endif
@@ -124,8 +200,17 @@
 #define RPBRIDGE_CAN_RX_PIN 21
 #endif
 
-/* ───── UART phy selection lines (RS232/RS485/TTL) ───────────────────── */
+/* ───── UART phy bank (RS232 + RS485 transceivers) ───────────────────── *
+ * Only assembled on the rev-B PCB; a bare Pico 2 board has neither
+ * MAX3232 nor SN65HVD72 populated. Disabling these flags collapses the
+ * 4×CDC composite to a single TTL CDC over UART0. */
 
+#ifndef RPBRIDGE_HAVE_RS232_PHY
+#define RPBRIDGE_HAVE_RS232_PHY  1
+#endif
+#ifndef RPBRIDGE_HAVE_RS485_PHY
+#define RPBRIDGE_HAVE_RS485_PHY  1
+#endif
 #ifndef RPBRIDGE_RS485_DE_PIN
 #define RPBRIDGE_RS485_DE_PIN  6
 #endif
@@ -134,6 +219,47 @@
 #endif
 #ifndef RPBRIDGE_RS232_SHDN_PIN
 #define RPBRIDGE_RS232_SHDN_PIN  8
+#endif
+
+/* ───── ADC channel map ──────────────────────────────────────────────── *
+ * Same on RP2350A and RP2350B — channels 0..3 share GP26..GP29 in both
+ * packages, channel 4 is the on-die temperature sensor. */
+
+#ifndef RPBRIDGE_ADC_EXT_CHANNEL_COUNT
+#define RPBRIDGE_ADC_EXT_CHANNEL_COUNT  4u
+#endif
+#ifndef RPBRIDGE_ADC_CH0_PIN
+#define RPBRIDGE_ADC_CH0_PIN  26u
+#endif
+#ifndef RPBRIDGE_ADC_CH1_PIN
+#define RPBRIDGE_ADC_CH1_PIN  27u
+#endif
+#ifndef RPBRIDGE_ADC_CH2_PIN
+#define RPBRIDGE_ADC_CH2_PIN  28u
+#endif
+#ifndef RPBRIDGE_ADC_CH3_PIN
+#define RPBRIDGE_ADC_CH3_PIN  29u
+#endif
+
+/* ───── User-facing GPIO + PWM whitelists ────────────────────────────── *
+ * The board exposes these GPIO numbers on its 2×10 user header. The
+ * lists are macros so source files can iterate over them with a fixed
+ * static const array. The PWM list is a strict subset of the GPIO list
+ * (only PWM-capable slices land in the PWM whitelist). */
+
+#ifndef RPBRIDGE_USER_GPIO_PIN_COUNT
+#define RPBRIDGE_USER_GPIO_PIN_COUNT  11u
+#endif
+#ifndef RPBRIDGE_USER_GPIO_PIN_LIST
+#define RPBRIDGE_USER_GPIO_PIN_LIST   { 30u, 31u, 37u, 38u, 39u, 40u, \
+                                        41u, 42u, 43u, 44u, 45u }
+#endif
+
+#ifndef RPBRIDGE_USER_PWM_PIN_COUNT
+#define RPBRIDGE_USER_PWM_PIN_COUNT  6u
+#endif
+#ifndef RPBRIDGE_USER_PWM_PIN_LIST
+#define RPBRIDGE_USER_PWM_PIN_LIST   { 30u, 31u, 37u, 38u, 39u, 40u }
 #endif
 
 #include "boards/pico2.h"   /* base defaults from the SDK */
