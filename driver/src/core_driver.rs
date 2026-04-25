@@ -290,6 +290,7 @@ pub(crate) fn spawn_children(state: Arc<RpbridgeState>) -> Result<usize, i32> {
         let is_vendor = matches!(
             class.as_slice(),
             b"gpio" | b"i2c" | b"spi" | b"pwm" | b"adc"
+                | b"led" | b"dmx" | b"onewire" | b"i2s"
         );
         if !is_vendor { continue; }
 
@@ -308,6 +309,10 @@ pub(crate) fn spawn_children(state: Arc<RpbridgeState>) -> Result<usize, i32> {
             b"spi"  => { let _ = crate::spi::SpiChild::probe(state.clone(), &bus)?; }
             b"pwm"  => { let _ = crate::pwm::PwmChild::probe(state.clone(), &bus)?; }
             b"adc"  => { let _ = crate::iio::IioChild::probe(state.clone(), &bus)?; }
+            b"led"     => { let _ = crate::led::LedChild::probe(state.clone(), &bus)?; }
+            b"dmx"     => { let _ = crate::dmx::DmxChild::probe(state.clone(), &bus)?; }
+            b"onewire" => { let _ = crate::onewire::OnewireChild::probe(state.clone(), &bus)?; }
+            b"i2s"     => { let _ = crate::i2s::I2sChild::probe(state.clone(), &bus)?; }
             _ => {}
         }
         spawned += 1;

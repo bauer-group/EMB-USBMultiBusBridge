@@ -124,6 +124,10 @@ add_executable(rpbridge
     src/commands/cmd_gpio.c
     src/commands/cmd_pwm.c
     src/commands/cmd_adc.c
+    src/commands/cmd_led.c
+    src/commands/cmd_dmx.c
+    src/commands/cmd_onewire.c
+    src/commands/cmd_i2s.c
 
     # Peripheral drivers.
     src/peripherals/pin_broker.c
@@ -136,6 +140,10 @@ add_executable(rpbridge
     src/peripherals/pwm.c
     src/peripherals/adc.c
     src/peripherals/can.c
+    src/peripherals/led_strip.c
+    src/peripherals/dmx.c
+    src/peripherals/onewire.c
+    src/peripherals/i2s.c
 
     # USB composite descriptor set + BOS / MS OS 2.0 for WinUSB binding,
     # plus the CDC-ACM <-> UART byte-shuttle glue and gs_usb (SocketCAN).
@@ -163,6 +171,14 @@ pico_generate_pio_header(rpbridge
     ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_pio_tx.pio)
 pico_generate_pio_header(rpbridge
     ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_pio_rx.pio)
+pico_generate_pio_header(rpbridge
+    ${CMAKE_CURRENT_LIST_DIR}/src/pio/ws2812.pio)
+pico_generate_pio_header(rpbridge
+    ${CMAKE_CURRENT_LIST_DIR}/src/pio/dmx_tx.pio)
+pico_generate_pio_header(rpbridge
+    ${CMAKE_CURRENT_LIST_DIR}/src/pio/onewire.pio)
+pico_generate_pio_header(rpbridge
+    ${CMAKE_CURRENT_LIST_DIR}/src/pio/i2s_tx.pio)
 
 target_include_directories(rpbridge PRIVATE
     src

@@ -203,6 +203,60 @@
 #define RPBRIDGE_RS232_SHDN_PIN  255u
 #endif
 
+/* ───── WS2812 / addressable LED strip (PIO2) ───────────────────────── *
+ * Drives a single addressable strip directly from a 3.3 V GPIO. Most
+ * WS2812-clone strips accept 3.3 V data with a level-shifter, or the
+ * first pixel can be sacrificed as a passive level shifter.
+ *
+ * Pin overlaps with the user-GPIO/PWM whitelist; the pin broker
+ * surfaces a runtime conflict if the host tries to GPIO/PWM the same
+ * pad while the LED subsystem is bound. */
+
+#ifndef RPBRIDGE_HAVE_LED
+#define RPBRIDGE_HAVE_LED  1
+#endif
+#ifndef RPBRIDGE_LED_STRIP_PIN
+#define RPBRIDGE_LED_STRIP_PIN  14u
+#endif
+
+/* ───── DMX512 (PIO2) ────────────────────────────────────────────────── *
+ * Single TX pin — user wires an external RS-485 transceiver. Tx-only
+ * in v1. */
+
+#ifndef RPBRIDGE_HAVE_DMX
+#define RPBRIDGE_HAVE_DMX  1
+#endif
+#ifndef RPBRIDGE_DMX_TX_PIN
+#define RPBRIDGE_DMX_TX_PIN  15u
+#endif
+
+/* ───── 1-Wire (PIO1) ────────────────────────────────────────────────── *
+ * One pin with external 4.7 kΩ pull-up. Pin overlaps the user-GPIO
+ * whitelist; the broker arbitrates at runtime. */
+
+#ifndef RPBRIDGE_HAVE_ONEWIRE
+#define RPBRIDGE_HAVE_ONEWIRE  1
+#endif
+#ifndef RPBRIDGE_ONEWIRE_PIN
+#define RPBRIDGE_ONEWIRE_PIN  12u
+#endif
+
+/* ───── I²S TX (PIO2) ────────────────────────────────────────────────── *
+ * BCLK + LRCLK consecutive (LRCLK MUST be BCLK+1). DOUT independent. */
+
+#ifndef RPBRIDGE_HAVE_I2S
+#define RPBRIDGE_HAVE_I2S  1
+#endif
+#ifndef RPBRIDGE_I2S_BCLK_PIN
+#define RPBRIDGE_I2S_BCLK_PIN  8u
+#endif
+#ifndef RPBRIDGE_I2S_LRCLK_PIN
+#define RPBRIDGE_I2S_LRCLK_PIN  9u
+#endif
+#ifndef RPBRIDGE_I2S_DOUT_PIN
+#define RPBRIDGE_I2S_DOUT_PIN  13u
+#endif
+
 /* ───── ADC channel map — identical to rev-B ────────────────────────── */
 
 #ifndef RPBRIDGE_ADC_EXT_CHANNEL_COUNT

@@ -1,0 +1,75 @@
+; SPDX-License-Identifier: BSD-3-Clause
+; Copyright (c) 2026 BAUER GROUP
+;
+; DMX512 transmitter — one PIO state machine.
+;
+; Wire framing (USITT DMX512-A):
+;   - 250 kbit/s, 8N2 (1 start bit, 8 data LSB-first, 2 stop bits), idle HIGH.
+;   - Each frame begins with BREAK (≥ 88 µs LOW) + MAB (≥ 8 µs HIGH),
+;     followed by slot 0 (start code, usually 0x00) + up to 512 slots.
+;
+; This SM emits ONLY the slot bytes. The C driver (peripherals/dmx.c)
+; handles BREAK + MAB by stopping the SM, driving the pin via
+; pio_sm_set_pins_with_mask (LOW for ≥ 88 µs, HIGH for ≥ 8 µs), then
+; restarting the SM and pushing the slot bytes via the TX FIFO. This
+; split keeps the PIO program tiny (~5 instructions) and the BREAK
+; timing controlled by the CPU loop, which is more flexible than
+; embedding a fixed BREAK length in PIO.
+;
+; SM clock is set to 8 cycles per bit at 250 kbaud → SM clock = 2 MHz.
+; clkdiv = clk_sys / 2e6 (≈ 75.0 at 150 MHz).
+;
+; FIFO usage: each push is one slot byte right-aligned in a 32-bit
+; word (`pio_sm_put_blocking(pio, sm, byte)`). Bit 0 (LSB) shifts out
+; first; the line is held HIGH for two bit-times after the data byte
+; before the next pull, which yields 8N2 framing.
+;
+; Pin mapping:
+;   OUT pin 0       = DMX TX
+;   side-set pin 0  = DMX TX (drives the line LOW during the start bit
+;                              and HIGH during stop bits / idle)
+
+.program rpbridge_dmx_tx
+.side_set 1 opt
+
+    pull       side 1 [7]   ; stall HIGH (= stop bit 2 + idle); 8 cycles
+                            ; ensures the previous frame ends with the
+                            ; spec-required second stop bit before we go
+                            ; quiet on the FIFO.
+    set x, 7   side 0 [7]   ; load bit counter (8 bits) and emit the
+                            ; start bit LOW for one bit-time.
+bitloop:
+    out pins, 1             ; shift one data bit (LSB first).
+    jmp x-- bitloop [6]     ; 8-cycle loop body (1 out + 1 jmp + 6 delay).
+    nop        side 1 [7]   ; stop bit 1 — HIGH for one bit-time. The
+                            ; pull's [7] above will provide stop bit 2.
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void rpbridge_dmx_tx_program_init(PIO pio, uint sm,
+                                                uint offset, uint pin)
+{
+    pio_sm_config c = rpbridge_dmx_tx_program_get_default_config(offset);
+
+    sm_config_set_out_pins    (&c, pin, 1);
+    sm_config_set_sideset_pins(&c, pin);
+
+    /* Right-shift LSB-first — DMX is little-endian on the bit level.
+     * No autopull; we pull one byte per 32-bit word manually. */
+    sm_config_set_out_shift(&c, true /*shift_right*/, false /*autopull*/, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    /* 2 MHz SM clock = 8 cycles per bit at 250 kbaud. */
+    float div = (float)clock_get_hz(clk_sys) / 2000000.0f;
+    sm_config_set_clkdiv(&c, div);
+
+    /* Idle line HIGH (DMX driver convention). */
+    pio_sm_set_pins_with_mask   (pio, sm, 1u << pin, 1u << pin);
+    pio_sm_set_pindirs_with_mask(pio, sm, 1u << pin, 1u << pin);
+    pio_gpio_init(pio, pin);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

@@ -1,0 +1,92 @@
+; SPDX-License-Identifier: BSD-3-Clause
+; Copyright (c) 2026 BAUER GROUP
+;
+; I²S transmitter (Philips I²S variant) — single PIO state machine.
+;
+; Generates the three I²S signals from one SM:
+;   BCLK   — bit clock (toggles each SM cycle, side-set bit 0)
+;   LRCLK  — word select (one transition per channel, side-set bit 1)
+;            LRCLK = LOW  during the right channel, HIGH during left
+;            (per the original NXP / Philips I²S spec).
+;   DOUT   — serial data out (OUT pin, MSB-first).
+;
+; Format: 16-bit signed PCM, stereo, 32 BCLK cycles per L/R frame
+; (16 bits left + 16 bits right). The DAC clocks data in on the rising
+; edge of BCLK; LRCLK transitions one BCLK BEFORE the new channel's
+; MSB (the standard "data delayed one BCLK" rule of Philips I²S).
+;
+; SM clock contract: SM_clock = 2 × BCLK. With 32 BCLKs per stereo
+; frame, the relationship between sample rate and SM clock is:
+;
+;   SM_clock = 2 × 32 × sample_rate_hz  =  64 × sample_rate_hz
+;
+; e.g., 48 kHz → SM clock 3.072 MHz; clkdiv = clk_sys / 3.072e6.
+;
+; Program structure mirrors pico-extras `audio_i2s.pio` (Raspberry
+; Pi Foundation, BSD-3-Clause): two 4-instruction half-frames, one
+; for each channel, with the LRCLK transition merged into the last
+; two instructions of each half so the data-sample edges land in
+; the spec window.
+;
+; FIFO contract: one 32-bit word per stereo frame, packed as
+;   bits 31..16 = left  channel sample (signed 16-bit)
+;   bits 15..0  = right channel sample (signed 16-bit)
+; OSR shift direction is LEFT (MSB-first), autopull at 32 bits.
+
+.program rpbridge_i2s_tx
+.side_set 2
+
+;                                 /--- LRCLK
+;                                 |/-- BCLK
+bitloop_left:
+    out pins, 1       side 0b10
+    jmp x-- bitloop_left side 0b11
+    out pins, 1       side 0b00      ; last left-channel bit; LRCLK→0 (right)
+    set x, 14         side 0b01      ; right channel will run x = 14 + 1 iters
+
+bitloop_right:
+    out pins, 1       side 0b00
+    jmp x-- bitloop_right side 0b01
+    out pins, 1       side 0b10      ; last right-channel bit; LRCLK→1 (left)
+    set x, 14         side 0b11      ; back to left; loop wraps to bitloop_left
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline float rpbridge_i2s_tx_compute_clkdiv(uint32_t sample_rate_hz)
+{
+    /* SM clock = 64 × sample rate (32 BCLKs/frame × 2 cycles/BCLK). */
+    return (float)clock_get_hz(clk_sys) / (64.0f * (float)sample_rate_hz);
+}
+
+static inline void rpbridge_i2s_tx_program_init(PIO pio, uint sm,
+                                                uint offset,
+                                                uint dout_pin,
+                                                uint bclk_pin,
+                                                uint32_t sample_rate_hz)
+{
+    pio_sm_config c = rpbridge_i2s_tx_program_get_default_config(offset);
+
+    /* OUT drives DOUT; side-set drives BCLK + LRCLK on bclk_pin and
+     * bclk_pin + 1. LRCLK MUST be on bclk_pin + 1 — the program's
+     * side-set encoding bakes that in. */
+    sm_config_set_out_pins    (&c, dout_pin, 1);
+    sm_config_set_sideset_pins(&c, bclk_pin);
+
+    /* Shift LEFT (MSB first), autopull at 32 bits — host packs L+R
+     * 16-bit samples into a single word, MSB-first. */
+    sm_config_set_out_shift(&c, false /*shift_right*/, true /*autopull*/, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    sm_config_set_clkdiv(&c, rpbridge_i2s_tx_compute_clkdiv(sample_rate_hz));
+
+    pio_gpio_init(pio, dout_pin);
+    pio_gpio_init(pio, bclk_pin);
+    pio_gpio_init(pio, bclk_pin + 1u);
+    pio_sm_set_consecutive_pindirs(pio, sm, dout_pin, 1, true);
+    pio_sm_set_consecutive_pindirs(pio, sm, bclk_pin, 2, true);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

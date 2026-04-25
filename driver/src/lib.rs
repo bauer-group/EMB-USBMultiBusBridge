@@ -40,6 +40,10 @@ mod i2c;
 mod spi;
 mod pwm;
 mod iio;
+mod led;
+mod dmx;
+mod onewire;
+mod i2s;
 
 /// Generic errors this driver maps to/from kernel `Result<T>`.
 #[allow(dead_code)]

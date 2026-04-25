@@ -130,6 +130,65 @@ close them.
       and rewire call sites. See ADR-0007 §Upstream-replacement
       plan for the expected order.
 
+### M12 — PIO2 applet wire layers (LED + DMX, this commit)
+
+Wire-only Rust clients for the new `0x07` LED and `0x08` DMX
+firmware subsystems. Layer 3 (kernel binding) is deferred until
+upstream R4L wrappers exist for addressable LEDs and DMX
+char-devices; for now the auxiliary children probe + log + retain
+the Client without registering a kernel device.
+
+- [x] `src/led.rs` — wire builders/parsers for `GET_INFO`,
+      `CONFIGURE`, `WRITE`, `CLEAR`. `Client<T: RoundTrip>` rejects
+      oversize WRITE payloads before hitting the transport. Inline
+      tests + MockRoundTrip integration tests for every op.
+- [x] `src/dmx.rs` — wire builders/parsers for `GET_INFO`,
+      `SET_SLOTS`, `START`, `STOP`, `SET_BREAK`. `Client<T>`
+      mirrors the LED shape. Inline + MockRoundTrip tests.
+- [x] `LedChild::probe()` / `DmxChild::probe()` — placeholders
+      that call `GET_INFO` and log; both wired into
+      `core_driver::spawn_children` so the cap-map → child path is
+      exercised end-to-end.
+- [ ] **§R4L-LED-BINDINGS:** register a `kernel::led::Multicolor`
+      vtable once the upstream Rust wrapper lands. Map per-pixel
+      R/G/B (and W) brightness to `Client::write()` partial updates
+      so the multicolor sysfs surface stays cheap.
+- [ ] **char-device wrapper for DMX:** misc-class char device
+      (`/dev/rpbridge-dmxN`) that mmaps the 513-byte universe
+      buffer + ioctl(START)/ioctl(STOP), so OLA can plug a custom
+      plugin against a stable userspace ABI. Tracked behind
+      `kernel::miscdev` Rust binding stabilisation.
+
+### M12.2 — 1-Wire + I²S wire layers
+
+Wire-only Rust clients for the firmware's `0x09` ONEWIRE and `0x0A`
+I²S subsystems. Layer 3 (kernel binding) deferred until upstream
+R4L wrappers exist for w1 and ASoC.
+
+- [x] `src/onewire.rs` — wire builders/parsers for `GET_INFO`,
+      `RESET`, `WRITE`, `READ`, `TRIPLET`. `Client<T: RoundTrip>`
+      maps `RESET` to a `bool` (presence detected), `TRIPLET` to a
+      decoded `(id_bit, cmp_bit, dir)` triple for SEARCH ROM.
+- [x] `src/i2s.rs` — wire builders/parsers for `GET_INFO`,
+      `CONFIGURE`, `START`, `STOP`, `WRITE`. `Client<T>` rejects
+      unaligned (non-multiple-of-4) PCM payloads before hitting the
+      transport.
+- [x] `OnewireChild::probe()` and `I2sChild::probe()` — placeholders
+      that call `GET_INFO` and log; both wired into
+      `core_driver::spawn_children`.
+- [x] Inline + MockRoundTrip integration tests for every op,
+      including SEARCH-ROM triplet decoding and PCM frame
+      validation.
+- [ ] **§R4L-W1-BINDINGS:** register a `kernel::w1::Master` vtable
+      once the upstream Rust wrapper lands. Map `reset_bus()` →
+      `Client::reset()`, `read_block()` / `write_block()` → bytes
+      ops, `search()` → SEARCH ROM via repeated TRIPLET.
+- [ ] **ASoC machine + codec driver for I²S TX:** writing a full
+      ASoC stack (machine + codec + DAI link) is heavy; a minimal
+      misc-class char device that accepts raw PCM via `write()` is
+      a v1.5 interim option that gives ALSA-via-aplay shape without
+      the full ASoC scaffolding.
+
 ## Upstream-submission prep (future M13)
 
 - [ ] `kernel-baseline/` bump to the R4L tree that provides all

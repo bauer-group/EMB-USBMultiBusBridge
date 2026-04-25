@@ -22,6 +22,7 @@
 #include "capabilities.h"
 #include "rpbp/rpbp_cbor.h"
 #include "version.h"
+#include "peripherals/led_strip.h"   /* RPBRIDGE_LED_MAX_PIXELS */
 
 #include "pico.h"             /* board feature flags */
 #include "pico/unique_id.h"
@@ -91,6 +92,22 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
 #define FEAT_HAVE_CAN        RPBRIDGE_HAVE_CAN
 #define FEAT_HAVE_I2C1       RPBRIDGE_HAVE_I2C1
 #define FEAT_HAVE_SPI1       RPBRIDGE_HAVE_SPI1
+#ifndef RPBRIDGE_HAVE_LED
+#  define RPBRIDGE_HAVE_LED  0
+#endif
+#ifndef RPBRIDGE_HAVE_DMX
+#  define RPBRIDGE_HAVE_DMX  0
+#endif
+#ifndef RPBRIDGE_HAVE_ONEWIRE
+#  define RPBRIDGE_HAVE_ONEWIRE  0
+#endif
+#ifndef RPBRIDGE_HAVE_I2S
+#  define RPBRIDGE_HAVE_I2S  0
+#endif
+#define FEAT_HAVE_LED        RPBRIDGE_HAVE_LED
+#define FEAT_HAVE_DMX        RPBRIDGE_HAVE_DMX
+#define FEAT_HAVE_ONEWIRE    RPBRIDGE_HAVE_ONEWIRE
+#define FEAT_HAVE_I2S        RPBRIDGE_HAVE_I2S
 
 /* Always-on features count. Whenever you add or remove a string in
  * the always-on block of `rpbridge_capabilities_emit`, update this
@@ -104,6 +121,10 @@ size_t rpbridge_identity_emit(uint8_t *buf, size_t cap)
       + (FEAT_UART_RS485    ? 1 : 0)                              \
       + (FEAT_UART_PIO_8N1  ? 1 : 0)                              \
       + (FEAT_HAVE_CAN      ? 3 : 0)   /* classic + gs-usb + hw-ts */ \
+      + (FEAT_HAVE_LED      ? 1 : 0)   /* led.ws2812                 */ \
+      + (FEAT_HAVE_DMX      ? 1 : 0)   /* dmx.tx                     */ \
+      + (FEAT_HAVE_ONEWIRE  ? 1 : 0)   /* onewire.master             */ \
+      + (FEAT_HAVE_I2S      ? 1 : 0)   /* i2s.tx                     */ \
 )
 
 size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
@@ -177,6 +198,18 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     cbor_writer_text_cstr(&w, "can.gs-usb");
     cbor_writer_text_cstr(&w, "can.hw-timestamp");
 #endif
+#if FEAT_HAVE_LED
+    cbor_writer_text_cstr(&w, "led.ws2812");          /* WS2812-class strip on PIO2 */
+#endif
+#if FEAT_HAVE_DMX
+    cbor_writer_text_cstr(&w, "dmx.tx");              /* DMX512-A transmitter on PIO2 */
+#endif
+#if FEAT_HAVE_ONEWIRE
+    cbor_writer_text_cstr(&w, "onewire.master");      /* 1-Wire master on PIO1 */
+#endif
+#if FEAT_HAVE_I2S
+    cbor_writer_text_cstr(&w, "i2s.tx");              /* I²S TX on PIO2 */
+#endif
 
     /*
      * buses: one entry per bus family, each a flat array of host-
@@ -185,8 +218,16 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
      * the populated MAX3232/SN65HVD72 (RPBRIDGE_HAVE_RS232/485_PHY),
      * and the 4th CDC (PIO-UART) requires RPBRIDGE_HAVE_PIO_UART.
      */
+    /* buses entry count: uart + i2c + spi + gpio + pwm + adc + can = 7 base,
+     * + led / dmx / onewire / i2s when feature-flagged. The map size MUST
+     * exactly match the number of bus-class keys we write below. */
+#define BUSES_MAP_COUNT (7                              \
+    + (FEAT_HAVE_LED      ? 1 : 0)                      \
+    + (FEAT_HAVE_DMX      ? 1 : 0)                      \
+    + (FEAT_HAVE_ONEWIRE  ? 1 : 0)                      \
+    + (FEAT_HAVE_I2S      ? 1 : 0))
     cbor_writer_text_cstr(&w, "buses");
-    cbor_writer_map(&w, 7);
+    cbor_writer_map(&w, BUSES_MAP_COUNT);
 
 #define UART_BUS_COUNT (1 /* TTL */                          \
                       + (FEAT_UART_RS232    ? 1 : 0)         \
@@ -402,6 +443,60 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     }
 #endif
 
+    /* LED — single addressable strip on PIO2 when present. */
+#if FEAT_HAVE_LED
+    cbor_writer_text_cstr(&w, "led");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 4);
+        cbor_writer_kv_uint(&w, "idx",        0);
+        cbor_writer_kv_uint(&w, "data_pin",   RPBRIDGE_LED_STRIP_PIN);
+        cbor_writer_kv_uint(&w, "max_pixels", RPBRIDGE_LED_MAX_PIXELS);
+        cbor_writer_kv_text(&w, "chipset",    "ws2812");
+    }
+#endif
+
+    /* DMX — single TX-only universe on PIO2 when present. */
+#if FEAT_HAVE_DMX
+    cbor_writer_text_cstr(&w, "dmx");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 4);
+        cbor_writer_kv_uint(&w, "idx",        0);
+        cbor_writer_kv_uint(&w, "tx_pin",     RPBRIDGE_DMX_TX_PIN);
+        cbor_writer_kv_uint(&w, "max_slots",  512);
+        cbor_writer_kv_text(&w, "direction",  "tx");
+    }
+#endif
+
+    /* 1-Wire — single bus on PIO1 when present. */
+#if FEAT_HAVE_ONEWIRE
+    cbor_writer_text_cstr(&w, "onewire");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 3);
+        cbor_writer_kv_uint(&w, "idx",      0);
+        cbor_writer_kv_uint(&w, "data_pin", RPBRIDGE_ONEWIRE_PIN);
+        cbor_writer_kv_text(&w, "speed",    "standard");
+    }
+#endif
+
+    /* I²S — single TX-only path on PIO2 when present. */
+#if FEAT_HAVE_I2S
+    cbor_writer_text_cstr(&w, "i2s");
+    cbor_writer_array(&w, 1);
+    {
+        cbor_writer_map(&w, 7);
+        cbor_writer_kv_uint(&w, "idx",        0);
+        cbor_writer_kv_uint(&w, "bclk_pin",   RPBRIDGE_I2S_BCLK_PIN);
+        cbor_writer_kv_uint(&w, "lrclk_pin",  RPBRIDGE_I2S_LRCLK_PIN);
+        cbor_writer_kv_uint(&w, "dout_pin",   RPBRIDGE_I2S_DOUT_PIN);
+        cbor_writer_kv_uint(&w, "min_rate",   8000);
+        cbor_writer_kv_uint(&w, "max_rate",   96000);
+        cbor_writer_kv_text(&w, "direction",  "tx");
+    }
+#endif
+
     /*
      * access — where each subsystem is reachable from the host
      * (ADR-0005). Hosts use this to route requests to the right
@@ -410,8 +505,13 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
      *   "vendor" — RPBP over our vendor interface (driver or libusb)
      *   "cdc+vendor" — reserved for future dual-reachable subsystems
      */
+#define ACCESS_MAP_COUNT (7                          \
+    + (FEAT_HAVE_LED      ? 1 : 0)                   \
+    + (FEAT_HAVE_DMX      ? 1 : 0)                   \
+    + (FEAT_HAVE_ONEWIRE  ? 1 : 0)                   \
+    + (FEAT_HAVE_I2S      ? 1 : 0))
     cbor_writer_text_cstr(&w, "access");
-    cbor_writer_map(&w, 7);
+    cbor_writer_map(&w, ACCESS_MAP_COUNT);
     cbor_writer_kv_text(&w, "uart", "cdc");
     cbor_writer_kv_text(&w, "i2c",  "vendor");
     cbor_writer_kv_text(&w, "spi",  "vendor");
@@ -419,6 +519,18 @@ size_t rpbridge_capabilities_emit(uint8_t *buf, size_t cap)
     cbor_writer_kv_text(&w, "pwm",  "vendor");
     cbor_writer_kv_text(&w, "adc",  "vendor");
     cbor_writer_kv_text(&w, "can",  "vendor");
+#if FEAT_HAVE_LED
+    cbor_writer_kv_text(&w, "led",     "vendor");
+#endif
+#if FEAT_HAVE_DMX
+    cbor_writer_kv_text(&w, "dmx",     "vendor");
+#endif
+#if FEAT_HAVE_ONEWIRE
+    cbor_writer_kv_text(&w, "onewire", "vendor");
+#endif
+#if FEAT_HAVE_I2S
+    cbor_writer_kv_text(&w, "i2s",     "vendor");
+#endif
 
     /* ota descriptor */
     cbor_writer_text_cstr(&w, "ota");

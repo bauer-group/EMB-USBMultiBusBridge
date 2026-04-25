@@ -102,11 +102,11 @@ Ring allocation policy:
 
 ### Today
 
-| Block | SMs used | Instr used | Owner(s)                                       |
-|-------|---------:|-----------:|------------------------------------------------|
-| PIO0  | 0 / 4    | 0 / 32     | **Reserved — can2040 (M5)**                   |
-| PIO1  | 2 / 4    | ~11 / 32   | `uart_pio_tx` (≈4 instr), `uart_pio_rx` (≈8 instr) |
-| PIO2  | 0 / 4    | 0 / 32     | **Free**                                       |
+| Block | SMs used | Instr used | Owner(s)                                                                  |
+|-------|---------:|-----------:|---------------------------------------------------------------------------|
+| PIO0  | 3 / 4    | 32 / 32    | **can2040 (M5)** — block-exclusive                                        |
+| PIO1  | 3 / 4    | ~25 / 32   | `uart_pio_tx` (≈4), `uart_pio_rx` (≈8), `onewire` (≈14)                   |
+| PIO2  | 3 / 4    | ~17 / 32   | `ws2812` (≈4), `dmx_tx` (≈5), `i2s_tx` (≈8)                               |
 
 ### After all planned applets land
 
@@ -125,11 +125,12 @@ that's no longer in v1 scope.
 
 | Applet                  | SMs  | Instr | Target block | Milestone   | Status    |
 |-------------------------|-----:|------:|--------------|-------------|-----------|
-| `can2040`               | 3    | ~32   | PIO0         | M5          | pending   |
+| `can2040`               | 3    | ~32   | PIO0         | M5          | landed    |
 | `rs485_de.pio`          | 1    | ~6    | PIO1         | M4d-PIO     | optional  |
-| `1-wire`                | 1    | ~14   | PIO2         | future      | planned   |
-| `ws2812`                | 1    | ~4    | PIO2         | future      | optional  |
-| `i2s_tx` (UAC2 future)  | 1    | ~6    | PIO2         | future      | optional  |
+| `onewire`               | 1    | ~14   | PIO1         | M12         | landed    |
+| `ws2812`                | 1    | ~4    | PIO2         | M12         | landed    |
+| `dmx_tx`                | 1    | ~5    | PIO2         | M12         | landed    |
+| `i2s_tx`                | 1    | ~8    | PIO2         | M12         | landed    |
 | `logic_capture`         | 1-4  | ~20   | PIO2 / PIO1  | future      | planned   |
 | Extra PIO-UART #2..n    | 2/ea | ~11   | PIO1-rest    | future      | optional  |
 
@@ -173,32 +174,48 @@ matches [hardware-design §6](../drafts/rpbridge-hardware-design.md)).
 
 Live claims as of M3:
 
-| Pin(s)              | Owner         | Function                                           |
-|---------------------|---------------|----------------------------------------------------|
-| GP0, GP1            | `uart-hw`     | UART0 TX / RX (phy-bank backend)                   |
-| GP2, GP3            | `i2c`         | I²C #0 SDA / SCL (Qwiic 1+2)                       |
-| GP4, GP5            | —             | UART1 TX / RX (owned by pico-sdk stdio_uart)       |
-| GP6                 | `uart-phy`    | RS485 DE (handed to uart_hw while in RS485 mode)   |
-| GP7                 | `uart-phy`    | RS485 EN                                           |
-| GP8                 | `uart-phy`    | RS232 /SHDN                                        |
-| GP9                 | free          | SPI0 user IRQ (lazy claim — see cmd_spi + docs)    |
-| GP10..GP12          | `spi`         | SPI1 SCK / MOSI / MISO                             |
-| GP13..GP15          | `spi` (lazy)  | SPI1 CS0 / CS1 / CS2 (claimed on first XFER)       |
-| GP16                | `spi`         | SPI0 MISO                                          |
-| GP17                | `spi` (lazy)  | SPI0 CS (claimed on first XFER)                    |
-| GP18, GP19          | `spi`         | SPI0 SCK / MOSI                                    |
-| GP20, GP21          | `can`         | CAN 2.0B TX / RX (can2040 on PIO0)                 |
-| GP22..GP24          | `system`+`pwm`| RGB status LED (PWM-driven, 1 kHz)                 |
-| GP26..GP29          | `adc`         | ADC0..ADC3 (user header A0..A3)                    |
-| GP30, GP31          | `gpio`/`pwm`  | User header — lazy claim on CONFIGURE              |
-| GP33, GP36          | `uart-pio`    | PIO-UART TX / RX                                   |
-| GP34, GP35          | `i2c`         | I²C #1 SDA / SCL (Qwiic 3)                         |
-| GP37..GP40          | `gpio`/`pwm`  | User header — lazy claim on CONFIGURE              |
-| GP41..GP45          | `gpio` (lazy) | User header — GPIO only (no PWM)                   |
+| Pin(s)              | Owner          | Function                                                   |
+|---------------------|----------------|------------------------------------------------------------|
+| GP0, GP1            | `uart-hw`      | UART0 TX / RX (phy-bank backend)                           |
+| GP2, GP3            | `i2c`          | I²C #0 SDA / SCL (Qwiic 1+2)                               |
+| GP4, GP5            | —              | UART1 TX / RX (owned by pico-sdk stdio_uart)               |
+| GP6                 | `uart-phy`     | RS485 DE (handed to uart_hw while in RS485 mode)           |
+| GP7                 | `uart-phy`     | RS485 EN                                                   |
+| GP8                 | `uart-phy`     | RS232 /SHDN                                                |
+| GP9                 | free           | SPI0 user IRQ (lazy claim — see cmd_spi + docs)            |
+| GP10..GP12          | `spi`          | SPI1 SCK / MOSI / MISO                                     |
+| GP13..GP15          | `spi` (lazy)   | SPI1 CS0 / CS1 / CS2 (claimed on first XFER)               |
+| GP16                | `spi`          | SPI0 MISO                                                  |
+| GP17                | `spi` (lazy)   | SPI0 CS (claimed on first XFER)                            |
+| GP18, GP19          | `spi`          | SPI0 SCK / MOSI                                            |
+| GP20, GP21          | `can`          | CAN 2.0B TX / RX (can2040 on PIO0)                         |
+| GP22..GP24          | `system`+`pwm` | RGB status LED (PWM-driven, 1 kHz)                         |
+| GP26..GP29          | `adc`          | ADC0..ADC3 (user header A0..A3)                            |
+| GP30, GP31          | `gpio`/`pwm`   | User header — lazy claim on CONFIGURE                      |
+| GP32                | `1-wire`       | 1-Wire data line (PIO1 SM 2; external 4.7 kΩ pull-up)      |
+| GP33, GP36          | `uart-pio`     | PIO-UART TX / RX                                           |
+| GP34, GP35          | `i2c`          | I²C #1 SDA / SCL (Qwiic 3)                                 |
+| GP37..GP40          | `gpio`/`pwm`   | User header — lazy claim on CONFIGURE                      |
+| GP41                | `system`       | I²S BCLK (PIO2 SM 2)                                       |
+| GP42                | `system`       | I²S LRCLK (PIO2 SM 2; must be BCLK + 1)                    |
+| GP43                | `system`       | WS2812 / NeoPixel data line (PIO2 SM 0)                    |
+| GP44                | `system`       | DMX512 TX (to external RS-485 transceiver, PIO2 SM 1)      |
+| GP45                | `system`       | I²S DOUT (PIO2 SM 2)                                       |
 
-Pending subsystems (M4d-PIO / M5 / M6) will add 1-Wire, CAN, and
-streaming-channel claims. Update this table in the same PR that
-wires each one in.
+The pico2 variant overlays the PIO2 / PIO1 applet pins onto its
+narrower GP8..GP15 user range:
+
+- `RPBRIDGE_LED_STRIP_PIN`  = GP14
+- `RPBRIDGE_DMX_TX_PIN`     = GP15
+- `RPBRIDGE_ONEWIRE_PIN`    = GP12
+- `RPBRIDGE_I2S_BCLK_PIN`   = GP8 (LRCLK on GP9)
+- `RPBRIDGE_I2S_DOUT_PIN`   = GP13
+
+See `firmware/boards/rpbridge_pico2.h`.
+
+Pending subsystems (logic capture, RS485 precision-DE, RX
+extensions for 1-Wire / DMX) will land in future milestones.
+Update this table in the same PR that wires each one in.
 
 The broker is introspectable at runtime via
 `pin_broker_snapshot()`; future `SYS SELFTEST` payloads and
@@ -231,3 +248,13 @@ code — the earliest-PR-wins rule applies.
   RGB LED (GP22..24), plus the user-header lazy-claim zone
   (GP30/31/37..45). No new PIO or DMA usage — all HW-backed.
   (`49416a6`). Reserves Config 2 for M9 driver-priority mode.
+- 2026-04-25 — M12 PIO2 applets landed. WS2812 (`led_strip`, PIO2 SM 0,
+  ~4 instr) on GP43 (rev-B) / GP14 (pico2); DMX512-A TX (`dmx`, PIO2
+  SM 1, ~5 instr) on GP44 (rev-B) / GP15 (pico2). Subsystem IDs
+  `0x07` LED + `0x08` DMX.
+- 2026-04-25 — M12 PIO1 + PIO2 expansion. 1-Wire master (`onewire`,
+  PIO1 SM 2, ~14 instr) on GP32 (rev-B) / GP12 (pico2); I²S TX
+  (`i2s`, PIO2 SM 2, ~8 instr) on GP41/42/45 (rev-B) / GP8/9/13
+  (pico2). Final PIO budget: PIO0 sealed, PIO1 3/4 SMs ~25/32 instr,
+  PIO2 3/4 SMs ~17/32 instr. Subsystem IDs `0x09` ONEWIRE + `0x0A`
+  I²S.

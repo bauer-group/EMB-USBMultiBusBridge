@@ -109,7 +109,11 @@ enum rpbp_subsys {
     RPBP_SUBSYS_PWM    = 0x04,
     RPBP_SUBSYS_ADC    = 0x05,
     RPBP_SUBSYS_UART   = 0x06,
-    /* 0x07..0x7F reserved */
+    RPBP_SUBSYS_LED    = 0x07,   /* WS2812 / addressable LED strips */
+    RPBP_SUBSYS_DMX    = 0x08,   /* DMX512 — TX-only in v1           */
+    RPBP_SUBSYS_ONEWIRE = 0x09,  /* Maxim 1-Wire master              */
+    RPBP_SUBSYS_I2S    = 0x0A,   /* Philips I²S — TX-only in v1      */
+    /* 0x0B..0x7F reserved */
     /* 0x80..0xFF vendor */
 };
 
@@ -247,6 +251,56 @@ enum rpbp_uart_phy {
     RPBP_UART_PHY_TTL   = 1,
     RPBP_UART_PHY_RS232 = 2,
     RPBP_UART_PHY_RS485 = 3,
+};
+
+/* ───── LED opcodes (subsys = 7) ─────────────────────────────────────── */
+
+enum rpbp_led_op {
+    RPBP_LED_GET_INFO  = 0x00,   /* → strip count, type, max_pixels   */
+    RPBP_LED_CONFIGURE = 0x01,   /* idx + pixel_count + format        */
+    RPBP_LED_WRITE     = 0x02,   /* idx + offset + pixel bytes        */
+    RPBP_LED_CLEAR     = 0x03,   /* idx → fill with zero + latch      */
+};
+
+/*
+ * LED pixel format selector. The byte order on the wire is what the
+ * host ships; the driver re-orders before pushing to the SM. Most
+ * WS2812 strips use GRB, the SK6812-RGBW family extends to GRBW.
+ */
+enum rpbp_led_format {
+    RPBP_LED_FMT_GRB  = 0,   /* WS2812(B), SK6812-RGB         — 3 B/pixel */
+    RPBP_LED_FMT_RGB  = 1,   /* WS2811 strands, SK9822 frames — 3 B/pixel */
+    RPBP_LED_FMT_GRBW = 2,   /* SK6812-RGBW                   — 4 B/pixel */
+};
+
+/* ───── DMX opcodes (subsys = 8) ─────────────────────────────────────── */
+
+enum rpbp_dmx_op {
+    RPBP_DMX_GET_INFO  = 0x00,   /* → universe count, max_slots, mode */
+    RPBP_DMX_SET_SLOTS = 0x01,   /* idx + offset + slot bytes (≤ 512) */
+    RPBP_DMX_START     = 0x02,   /* begin continuous frame stream     */
+    RPBP_DMX_STOP      = 0x03,   /* stop transmission, line idle HIGH */
+    RPBP_DMX_SET_BREAK = 0x04,   /* tune break_us / mab_us (optional) */
+};
+
+/* ───── 1-Wire opcodes (subsys = 9) ──────────────────────────────────── */
+
+enum rpbp_onewire_op {
+    RPBP_ONEWIRE_GET_INFO = 0x00,  /* → bus count, pin                  */
+    RPBP_ONEWIRE_RESET    = 0x01,  /* reset + presence detect           */
+    RPBP_ONEWIRE_WRITE    = 0x02,  /* idx + bytes …                     */
+    RPBP_ONEWIRE_READ     = 0x03,  /* idx + len → bytes                 */
+    RPBP_ONEWIRE_TRIPLET  = 0x04,  /* idx + dir → id_bit | cmp | wrote  */
+};
+
+/* ───── I²S opcodes (subsys = 10) ────────────────────────────────────── */
+
+enum rpbp_i2s_op {
+    RPBP_I2S_GET_INFO  = 0x00,   /* → pin map, current rate, running     */
+    RPBP_I2S_CONFIGURE = 0x01,   /* idx + sample_rate_hz LE u32         */
+    RPBP_I2S_START     = 0x02,   /* idx                                  */
+    RPBP_I2S_STOP      = 0x03,   /* idx                                  */
+    RPBP_I2S_WRITE     = 0x04,   /* idx + stereo PCM frames (4 B each)   */
 };
 
 /* ───── Status codes ─────────────────────────────────────────────────── */

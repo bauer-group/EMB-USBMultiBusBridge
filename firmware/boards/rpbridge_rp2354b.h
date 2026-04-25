@@ -221,6 +221,60 @@
 #define RPBRIDGE_RS232_SHDN_PIN  8
 #endif
 
+/* ───── WS2812 / addressable LED strip (PIO2) ───────────────────────── *
+ * One pin drives the strip's data line directly (idle LOW, NRZ-encoded).
+ * The pin is part of the user-GPIO whitelist; the broker prevents
+ * overlapping GPIO/PWM claims at runtime. */
+
+#ifndef RPBRIDGE_HAVE_LED
+#define RPBRIDGE_HAVE_LED  1
+#endif
+#ifndef RPBRIDGE_LED_STRIP_PIN
+#define RPBRIDGE_LED_STRIP_PIN  43u
+#endif
+
+/* ───── DMX512 (PIO2) ────────────────────────────────────────────────── *
+ * Single TX pin — the user wires an external RS-485 transceiver
+ * (MAX485 / SN75176). Tx-only in v1; RX is a future extension. */
+
+#ifndef RPBRIDGE_HAVE_DMX
+#define RPBRIDGE_HAVE_DMX  1
+#endif
+#ifndef RPBRIDGE_DMX_TX_PIN
+#define RPBRIDGE_DMX_TX_PIN  44u
+#endif
+
+/* ───── 1-Wire (PIO1, shared block with the PIO-UART) ───────────────── *
+ * Single bidirectional pin with an external 4.7 kΩ pull-up to +3V3.
+ * The PIO program emulates open-drain by toggling pindirs (drive LOW
+ * vs. high-Z + pull-up = HIGH). */
+
+#ifndef RPBRIDGE_HAVE_ONEWIRE
+#define RPBRIDGE_HAVE_ONEWIRE  1
+#endif
+#ifndef RPBRIDGE_ONEWIRE_PIN
+#define RPBRIDGE_ONEWIRE_PIN  32u
+#endif
+
+/* ───── I²S TX (PIO2) ────────────────────────────────────────────────── *
+ * Three pins: BCLK (bit clock), LRCLK / WS (word select / left-right),
+ * DOUT (serial data). BCLK and LRCLK are driven by side-set on
+ * consecutive pins (BCLK at base, LRCLK = base + 1). DOUT is the OUT
+ * pin and may be located independently. */
+
+#ifndef RPBRIDGE_HAVE_I2S
+#define RPBRIDGE_HAVE_I2S  1
+#endif
+#ifndef RPBRIDGE_I2S_BCLK_PIN
+#define RPBRIDGE_I2S_BCLK_PIN  41u
+#endif
+#ifndef RPBRIDGE_I2S_LRCLK_PIN
+#define RPBRIDGE_I2S_LRCLK_PIN  42u   /* MUST be RPBRIDGE_I2S_BCLK_PIN + 1 */
+#endif
+#ifndef RPBRIDGE_I2S_DOUT_PIN
+#define RPBRIDGE_I2S_DOUT_PIN  45u
+#endif
+
 /* ───── ADC channel map ──────────────────────────────────────────────── *
  * Same on RP2350A and RP2350B — channels 0..3 share GP26..GP29 in both
  * packages, channel 4 is the on-die temperature sensor. */

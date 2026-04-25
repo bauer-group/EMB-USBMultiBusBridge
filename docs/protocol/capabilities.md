@@ -69,10 +69,10 @@ with the single-configuration coexistence model.
 
 Value is a map from subsystem-class name to one of:
 
-| Value         | Meaning                                                               |
-|:--------------|:----------------------------------------------------------------------|
-| `"cdc"`       | Reachable only via the inbox `usbser`-bound CDC-ACM virtual COM port. |
-| `"vendor"`    | Reachable only via RPBP on the vendor interface (driver or libusb).    |
+| Value          | Meaning                                                               |
+|:---------------|:----------------------------------------------------------------------|
+| `"cdc"`        | Reachable only via the inbox `usbser`-bound CDC-ACM virtual COM port. |
+| `"vendor"`     | Reachable only via RPBP on the vendor interface (driver or libusb).   |
 | `"cdc+vendor"` | Reserved for future dual-reachable subsystems.                        |
 
 Example for rev-B firmware (default):
@@ -85,9 +85,23 @@ Example for rev-B firmware (default):
   "gpio": "vendor",
   "pwm":  "vendor",
   "adc":  "vendor",
-  "can":  "vendor"
+  "can":     "vendor",
+  "led":     "vendor",
+  "dmx":     "vendor",
+  "onewire": "vendor",
+  "i2s":     "vendor"
 }
 ```
+
+`led`, `dmx`, `onewire` and `i2s` are present whenever the build
+includes their respective `RPBRIDGE_HAVE_LED` / `RPBRIDGE_HAVE_DMX`
+/ `RPBRIDGE_HAVE_ONEWIRE` / `RPBRIDGE_HAVE_I2S` flags — see the
+per-subsystem specs:
+
+- [`docs/protocol/subsystems/led.md`](subsystems/led.md)
+- [`docs/protocol/subsystems/dmx.md`](subsystems/dmx.md)
+- [`docs/protocol/subsystems/onewire.md`](subsystems/onewire.md)
+- [`docs/protocol/subsystems/i2s.md`](subsystems/i2s.md)
 
 Hosts use this field to route subsystem requests to the correct
 endpoint without guessing — e.g. the Rust driver's `Capabilities`

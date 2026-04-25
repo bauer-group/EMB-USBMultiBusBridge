@@ -108,6 +108,89 @@ combinations.
   every variant in one shell loop.
   `.github/workflows/firmware.yml` matrix axis includes both
   variants, so every push exercises both targets in 4 jobs.
+- **Firmware M12 — PIO2 applets: WS2812 + DMX512.** Two new
+  subsystems land together on the previously unused PIO2 block:
+  - **WS2812 / NeoPixel addressable LED strips** as RPBP subsystem
+    `0x07`. New `src/pio/ws2812.pio` (4-instr NRZ encoder, SM clock
+    8 MHz, 1.25 µs/bit), `src/peripherals/led_strip.{c,h}` driver
+    (256-pixel max framebuffer, GRB / RGB / GRBW formats, 80 µs
+    latch hold), and `src/commands/cmd_led.{c,h}` dispatcher with
+    opcodes `GET_INFO / CONFIGURE / WRITE / CLEAR`. Wire format
+    documented in `docs/protocol/subsystems/led.md`. Pin:
+    `RPBRIDGE_LED_STRIP_PIN` (GP43 rev-B, GP14 pico2). Feature flag
+    `led.ws2812`.
+  - **DMX512-A transmitter** as RPBP subsystem `0x08`. New
+    `src/pio/dmx_tx.pio` (8N2 UART at 250 kbaud), and
+    `src/peripherals/dmx.{c,h}` driver — BREAK + MAB are generated
+    by the C side via `pio_sm_set_pins_with_mask` while the SM is
+    paused, leaving timing host-tunable. 513-byte universe buffer
+    with tunable BREAK/MAB; `dmx_tick()` runs the ~40 Hz frame
+    cadence from the main loop. `src/commands/cmd_dmx.{c,h}`
+    dispatcher with opcodes `GET_INFO / SET_SLOTS / START / STOP /
+    SET_BREAK`. Wire format in `docs/protocol/subsystems/dmx.md`.
+    Pin: `RPBRIDGE_DMX_TX_PIN` (GP44 rev-B, GP15 pico2; user wires
+    their own RS-485 transceiver). Feature flag `dmx.tx`.
+  Both subsystems are gated on `RPBRIDGE_HAVE_LED` /
+  `RPBRIDGE_HAVE_DMX` board flags (default ON for both shipping
+  variants). PIO2 utilisation after this milestone: 2/4 SMs and
+  ~12/32 instr (still room for the planned 1-Wire applet).
+- **Driver M12 — wire-only Rust clients for LED + DMX.** New
+  `driver/src/led.rs` and `driver/src/dmx.rs` follow the
+  established `wire` builders + `Client<T: RoundTrip>` two-layer
+  pattern. `LedChild` and `DmxChild` placeholders integrate with
+  `core_driver::spawn_children` so the cap-map → child probe flow
+  is exercised end-to-end; both call `GET_INFO` and log the
+  discovered universe. Layer 3 (kernel binding) is deferred until
+  upstream R4L wrappers exist for `led_classdev_multicolor` and a
+  DMX char-device — tracked in `driver/TODO.md` §M12. Per-module
+  inline tests + `MockRoundTrip` integration tests cover every
+  opcode byte-for-byte.
+- **Firmware M12.2 — PIO1 + PIO2 expansion: 1-Wire + I²S TX.**
+  Two more applets land to maximise the chip's PIO budget. Final
+  utilisation: PIO0 sealed for can2040, PIO1 3/4 SMs ~25/32 instr,
+  PIO2 3/4 SMs ~17/32 instr (1 SM + 6-15 instr free in each
+  non-CAN block for future logic-capture / RS485 precision-DE).
+  - **1-Wire master** as RPBP subsystem `0x09`. New
+    `src/pio/onewire.pio` (~14 instr; pindirs-as-open-drain
+    emulation per Maxim AN126), `src/peripherals/onewire.{c,h}`
+    on PIO1 SM 2 with byte-level composition (LSB-first), and
+    `src/commands/cmd_onewire.{c,h}` dispatcher with opcodes
+    `GET_INFO / RESET / WRITE / READ / TRIPLET`. The TRIPLET
+    primitive (one round-trip, returns id_bit + cmp_bit +
+    direction-written) is the SEARCH-ROM building block per
+    Maxim AN187. Wire format in
+    `docs/protocol/subsystems/onewire.md`. Pin:
+    `RPBRIDGE_ONEWIRE_PIN` (GP32 rev-B, GP12 pico2). Feature
+    flag `onewire.master`.
+  - **I²S TX (Philips I²S, 16-bit signed PCM stereo)** as RPBP
+    subsystem `0x0A`. New `src/pio/i2s_tx.pio` (8 instr; mirrors
+    pico-extras `audio_i2s.pio` BSD-3 pattern), and
+    `src/peripherals/i2s.{c,h}` driver on PIO2 SM 2.
+    `_Static_assert` enforces `LRCLK_PIN == BCLK_PIN + 1`
+    (side-set requirement). Sample rate 8 kHz..96 kHz; the SM
+    clock is 64 × sample_rate so 32 BCLKs per L/R frame.
+    `src/commands/cmd_i2s.{c,h}` dispatcher with opcodes
+    `GET_INFO / CONFIGURE / START / STOP / WRITE`. v1 scope is
+    buffer-playback (WRITE blocks until the FIFO accepts);
+    continuous streaming via STREAM channel is a follow-up.
+    Wire format in `docs/protocol/subsystems/i2s.md`. Pins:
+    `RPBRIDGE_I2S_BCLK_PIN` / `_LRCLK_PIN` / `_DOUT_PIN`
+    (GP41/42/45 rev-B, GP8/9/13 pico2). Feature flag `i2s.tx`.
+  Both subsystems are gated on `RPBRIDGE_HAVE_ONEWIRE` /
+  `RPBRIDGE_HAVE_I2S` board flags (default ON for both shipping
+  variants). Subsystem IDs `0x09` ONEWIRE + `0x0A` I²S.
+- **Driver M12.2 — wire-only clients for 1-Wire + I²S.** New
+  `driver/src/onewire.rs` and `driver/src/i2s.rs`, same shape as
+  LED/DMX (wire builders + `Client<T: RoundTrip>`).
+  `OnewireChild::probe()` and `I2sChild::probe()` integrate with
+  `spawn_children`. The 1-Wire `Client::triplet()` returns a
+  decoded `TripletResult { id_bit, cmp_bit, dir }` so a future
+  kernel w1_master adapter can drive SEARCH ROM with one
+  round-trip per ROM bit. The I²S `Client::write()` rejects
+  unaligned (non-multiple-of-4) PCM payloads before hitting the
+  transport. Inline + `MockRoundTrip` integration tests cover
+  every opcode and decode all four (id_bit, cmp_bit) outcomes for
+  the SEARCH ROM triplet.
 
 ### Hardened (forward-compat)
 

@@ -38,6 +38,10 @@
 #include "peripherals/pwm.h"
 #include "peripherals/adc.h"
 #include "peripherals/can.h"
+#include "peripherals/led_strip.h"
+#include "peripherals/dmx.h"
+#include "peripherals/onewire.h"
+#include "peripherals/i2s.h"
 #include "usb/gs_usb_glue.h"
 #include "io_control/io_control.h"
 
@@ -298,6 +302,23 @@ int main(void)
     }
     gs_usb_glue_init();
 
+    /* PIO2 applets: WS2812 strip and DMX512 transmitter. Both are
+     * gated on board feature flags; if either is disabled the call
+     * returns ENOTSUP and we keep going. */
+    if (led_strip_init() < 0) {
+        printf("rpbridge: LED strip init failed (pin/PIO conflict or disabled)\n");
+    }
+    if (dmx_init() < 0) {
+        printf("rpbridge: DMX init failed (pin/PIO conflict or disabled)\n");
+    }
+    /* PIO1 applet: 1-Wire master. PIO2 applet: I²S TX. */
+    if (onewire_init() < 0) {
+        printf("rpbridge: 1-Wire init failed (pin/PIO conflict or disabled)\n");
+    }
+    if (i2s_init() < 0) {
+        printf("rpbridge: I²S init failed (pin/PIO conflict or disabled)\n");
+    }
+
     /* Bring the second core online with the I/O scheduler. Core 1
      * idles today; registered services (ADC streamer, TIME_SYNC
      * emitter) hook in here once they land. */
@@ -326,6 +347,7 @@ int main(void)
         cdc_glue_poll();
         gs_usb_glue_poll();
         io_control_poll();
+        dmx_tick();             /* emits DMX frames at ~40 Hz when running */
         watchdog_update();
 
         if (time_reached(next_led)) {

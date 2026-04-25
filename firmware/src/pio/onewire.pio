@@ -1,0 +1,132 @@
+; SPDX-License-Identifier: BSD-3-Clause
+; Copyright (c) 2026 BAUER GROUP
+;
+; 1-Wire (Maxim/Dallas) bus master — single PIO state machine.
+;
+; The bus is held HIGH by an external 4.7 kΩ pull-up. Slaves and the
+; master pull it LOW by switching the line into output mode (pindirs=1
+; with output value 0). Releasing means switching back to input
+; (pindirs=0) and letting the pull-up restore HIGH.
+;
+; SM clock: 1 MHz (1 cycle = 1 µs). Set clkdiv = clk_sys / 1e6.
+;
+; FIFO contract — the host pushes one 32-bit command word per slot:
+;
+;   bit 0      : 1 = WRITE_1 / READ slot, 0 = WRITE_0 slot
+;   bit 1      : 1 = RESET / presence-detect slot, 0 = bit slot
+;   bits 2..31 : reserved / zero
+;
+; The SM always pushes one bit back to the RX FIFO so the host can
+; correlate command order ↔ result:
+;
+;   * Bit slot:    sampled line level during the read window. For a
+;                  WRITE_0 slot the sample is irrelevant but still
+;                  pushed (= 0) so timing of host-side reads stays
+;                  one-to-one with TX FIFO writes.
+;   * Reset slot:  0 = presence pulse detected, 1 = no presence.
+;
+; Timing (Maxim AN126 §3 "Standard speed"):
+;   WRITE_0 :  60 µs LOW + 10 µs release (slot = 70 µs)
+;   WRITE_1 :   6 µs LOW + 64 µs release (slot = 70 µs)
+;   READ    :   6 µs LOW + 9 µs release + sample + 55 µs recovery
+;   RESET   : 480 µs LOW + 70 µs release + sample + 410 µs recovery
+;
+; Pin mapping:
+;   OUT pin 0 / IN pin 0 / SET pin 0  = 1-Wire data line
+;
+; Implementation notes
+; ────────────────────
+;   * Side-set is unused; we manipulate pindirs via `set pindirs, N`.
+;     `set pins, 0` is issued once at SM init so when pindirs goes
+;     output the level is always LOW.
+;   * Long delays (480 µs, 410 µs, 64 µs, 55 µs) exceed the 31-cycle
+;     cap on a single delay slot, so they are emitted as `nop [31]`
+;     loops counted by the X register.
+
+.program rpbridge_onewire
+
+PUBLIC entry:
+    pull                      ; wait for command word
+    out x, 1                  ; bit value (1 = read/write1, 0 = write0)
+    out y, 1                  ; mode    (1 = reset slot, 0 = bit slot)
+
+    jmp !y bit_op             ; y = 0 → bit slot
+    ; ── Reset slot ──────────────────────────────────────────────────
+reset:
+    set pindirs, 1            ; drive line LOW
+    set y, 23                 ; 24 × 20 µs = 480 µs
+reset_low:
+    nop [19]
+    jmp y-- reset_low         ; (1 + 19 = 20 cyc per iteration)
+    set pindirs, 0            ; release
+    set y, 6                  ; wait 70 µs (7 × 10) before sampling
+reset_release:
+    nop [9]
+    jmp y-- reset_release
+    in pins, 1                ; sample bus: 0 = presence, 1 = nothing
+    push                      ; commit
+    set y, 19                 ; recovery: 20 × 20 = 400 µs (slot ≈ 1 ms)
+reset_recover:
+    nop [19]
+    jmp y-- reset_recover
+    jmp entry
+
+bit_op:
+    set pindirs, 1 [5]        ; drive LOW for 6 µs
+    jmp !x write_zero
+    ; ── WRITE_1 / READ ─────────────────────────────────────────────
+    set pindirs, 0 [8]        ; release; sample after 9 µs total
+    in pins, 1                ; sample (bit-read result)
+    push
+    set y, 5                  ; recovery: 6 × 10 = 60 µs (slot ≈ 75 µs)
+write1_recover:
+    nop [9]
+    jmp y-- write1_recover
+    jmp entry
+
+write_zero:
+    ; Already 6 µs LOW from the entry instruction; need 54 more µs LOW.
+    set y, 5                  ; 6 × 9 µs = 54 µs
+write0_low:
+    nop [8]
+    jmp y-- write0_low
+    set pindirs, 0 [9]        ; release for 10 µs (slot total = 70 µs)
+    set x, 0                  ; result placeholder
+    in x, 1
+    push
+    jmp entry
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "hardware/gpio.h"
+
+static inline void rpbridge_onewire_program_init(PIO pio, uint sm,
+                                                 uint offset, uint pin)
+{
+    pio_sm_config c = rpbridge_onewire_program_get_default_config(offset);
+
+    sm_config_set_set_pins(&c, pin, 1);
+    sm_config_set_in_pins (&c, pin);
+    sm_config_set_jmp_pin (&c, pin);
+
+    sm_config_set_in_shift (&c, false /*shift_left*/, false /*autopush*/, 32);
+    sm_config_set_out_shift(&c, true  /*shift_right*/, false /*autopull*/, 32);
+
+    /* SM clock = 1 MHz so each cycle = 1 µs. */
+    float div = (float)clock_get_hz(clk_sys) / 1000000.0f;
+    sm_config_set_clkdiv(&c, div);
+
+    /* Init: pin output value LOW + pindirs INPUT (high-Z, pull-up
+     * restores HIGH). The pico-sdk gpio_pull_up call adds the
+     * internal pull-up as a backup; production wiring still wants an
+     * external 4.7 kΩ pull-up to +3V3 because the on-chip pull (~50
+     * kΩ) is too weak for fast slaves. */
+    pio_sm_set_pins_with_mask    (pio, sm, 0u, 1u << pin);
+    pio_sm_set_pindirs_with_mask (pio, sm, 0u, 1u << pin);
+    pio_gpio_init(pio, pin);
+    gpio_pull_up(pin);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

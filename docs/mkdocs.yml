@@ -108,6 +108,10 @@ nav:
       - GPIO subsystem: protocol/subsystems/gpio.md
       - PWM subsystem: protocol/subsystems/pwm.md
       - ADC subsystem: protocol/subsystems/adc.md
+      - LED subsystem: protocol/subsystems/led.md
+      - DMX subsystem: protocol/subsystems/dmx.md
+      - 1-Wire subsystem: protocol/subsystems/onewire.md
+      - I²S subsystem: protocol/subsystems/i2s.md
   - Firmware:
       - Overview: firmware/overview.md
       - Building & flashing: firmware/build.md

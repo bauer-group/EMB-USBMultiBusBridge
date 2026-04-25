@@ -93,6 +93,10 @@ pub enum Subsys {
     Pwm  = 0x04,
     Adc  = 0x05,
     Uart = 0x06,
+    Led     = 0x07,
+    Dmx     = 0x08,
+    Onewire = 0x09,
+    I2s     = 0x0A,
 }
 
 /* ───── Status codes (mirrors firmware enum rpbp_status) ─────────── */
@@ -256,6 +260,37 @@ pub mod op {
         pub const PHY_TTL:   u8 = 1;
         pub const PHY_RS232: u8 = 2;
         pub const PHY_RS485: u8 = 3;
+    }
+    pub mod led {
+        pub const GET_INFO:  u8 = 0x00;
+        pub const CONFIGURE: u8 = 0x01;
+        pub const WRITE:     u8 = 0x02;
+        pub const CLEAR:     u8 = 0x03;
+
+        pub const FMT_GRB:  u8 = 0;
+        pub const FMT_RGB:  u8 = 1;
+        pub const FMT_GRBW: u8 = 2;
+    }
+    pub mod dmx {
+        pub const GET_INFO:  u8 = 0x00;
+        pub const SET_SLOTS: u8 = 0x01;
+        pub const START:     u8 = 0x02;
+        pub const STOP:      u8 = 0x03;
+        pub const SET_BREAK: u8 = 0x04;
+    }
+    pub mod onewire {
+        pub const GET_INFO: u8 = 0x00;
+        pub const RESET:    u8 = 0x01;
+        pub const WRITE:    u8 = 0x02;
+        pub const READ:     u8 = 0x03;
+        pub const TRIPLET:  u8 = 0x04;
+    }
+    pub mod i2s {
+        pub const GET_INFO:  u8 = 0x00;
+        pub const CONFIGURE: u8 = 0x01;
+        pub const START:     u8 = 0x02;
+        pub const STOP:      u8 = 0x03;
+        pub const WRITE:     u8 = 0x04;
     }
 }
 

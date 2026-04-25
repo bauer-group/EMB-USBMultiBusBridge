@@ -21,6 +21,10 @@
 #include "commands/cmd_gpio.h"
 #include "commands/cmd_pwm.h"
 #include "commands/cmd_adc.h"
+#include "commands/cmd_led.h"
+#include "commands/cmd_dmx.h"
+#include "commands/cmd_onewire.h"
+#include "commands/cmd_i2s.h"
 
 #include <string.h>
 
@@ -297,6 +301,18 @@ static enum rpbp_status handle_cmd_request(const struct rpbp_header *hdr,
 
     case RPBP_SUBSYS_ADC:
         return cmd_adc_dispatch(hdr, opcode, args, args_len, cbor);
+
+    case RPBP_SUBSYS_LED:
+        return cmd_led_dispatch(hdr, opcode, args, args_len, cbor);
+
+    case RPBP_SUBSYS_DMX:
+        return cmd_dmx_dispatch(hdr, opcode, args, args_len, cbor);
+
+    case RPBP_SUBSYS_ONEWIRE:
+        return cmd_onewire_dispatch(hdr, opcode, args, args_len, cbor);
+
+    case RPBP_SUBSYS_I2S:
+        return cmd_i2s_dispatch(hdr, opcode, args, args_len, cbor);
 
     default:
         rpbp_reply_cmd(hdr, subsys, opcode, RPBP_ENOENT, NULL, 0, false);
