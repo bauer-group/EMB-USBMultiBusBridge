@@ -23,11 +23,17 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "pico.h"   /* board header → RPBRIDGE_USER_GPIO_PIN_COUNT */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define GPIO_HW_NUM_USER_PINS  11u
+#ifndef RPBRIDGE_USER_GPIO_PIN_COUNT
+#  define RPBRIDGE_USER_GPIO_PIN_COUNT 11u
+#endif
+
+#define GPIO_HW_NUM_USER_PINS  RPBRIDGE_USER_GPIO_PIN_COUNT
 
 /*
  * Direction / pull enums — wire-compatible with

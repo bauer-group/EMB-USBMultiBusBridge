@@ -15,11 +15,11 @@
 
 #include <string.h>
 
-/* User-facing PWM pin whitelist — must match the board's 2×10 header
- * wiring (docs/drafts/rpbridge-hardware-design.md §7.9). */
-static const uint8_t g_user_pins[PWM_HW_NUM_USER_PINS] = {
-    30, 31, 37, 38, 39, 40,
-};
+/* User-facing PWM pin whitelist sourced from RPBRIDGE_USER_PWM_PIN_LIST
+ * in the active board header. Must remain a strict subset of the GPIO
+ * whitelist, with each pin landing on a distinct PWM slice channel. */
+static const uint8_t g_user_pins[PWM_HW_NUM_USER_PINS] =
+    RPBRIDGE_USER_PWM_PIN_LIST;
 
 /*
  * Per-pin state. Indexed by GPIO number (0..47).

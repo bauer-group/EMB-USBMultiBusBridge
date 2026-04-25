@@ -15,13 +15,12 @@
 #include "pico/time.h"
 
 /*
- * Host-exposed pin whitelist, fixed by the board layout (rev-B user
- * headers). Kept in ascending GP-number order so gpio_hw_list() can
- * memcpy directly.
+ * Host-exposed pin whitelist, sourced from the active board header
+ * via RPBRIDGE_USER_GPIO_PIN_LIST. Kept in ascending GP-number order
+ * so gpio_hw_list() can memcpy directly.
  */
-static const uint8_t g_user_pins[GPIO_HW_NUM_USER_PINS] = {
-    30, 31, 37, 38, 39, 40, 41, 42, 43, 44, 45,
-};
+static const uint8_t g_user_pins[GPIO_HW_NUM_USER_PINS] =
+    RPBRIDGE_USER_GPIO_PIN_LIST;
 
 /* Bitmap of pins the GPIO-user subsystem currently owns + their
  * direction. Indexed by GPIO number (0..47). */

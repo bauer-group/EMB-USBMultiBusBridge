@@ -27,6 +27,8 @@
 #ifndef RPBRIDGE_PWM_H
 #define RPBRIDGE_PWM_H
 
+#include "pico.h"   /* board header → RPBRIDGE_USER_PWM_PIN_COUNT */
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -35,7 +37,11 @@
 extern "C" {
 #endif
 
-#define PWM_HW_NUM_USER_PINS  6u
+#ifndef RPBRIDGE_USER_PWM_PIN_COUNT
+#  define RPBRIDGE_USER_PWM_PIN_COUNT 6u
+#endif
+
+#define PWM_HW_NUM_USER_PINS  RPBRIDGE_USER_PWM_PIN_COUNT
 
 enum pwm_hw_owner {
     PWM_HW_OWNER_FREE   = 0,
