@@ -26,7 +26,20 @@
 #define PICO_RP2350B 1
 #endif
 
-/* 2 MB internal flash (stacked) — this overrides the pico-sdk default. */
+/* 2 MB internal flash (stacked) — this overrides the pico-sdk default
+ * (rp2350-arm-s.cmake declares 4 MB as the platform default).
+ *
+ * The C macro and the CMake-side default MUST agree: the C macro feeds
+ * `hardware_flash`'s sanity checks at runtime, while the CMake default
+ * is interpolated into `pico_flash_region.ld` to bound the linker's
+ * FLASH region. If only the C macro is set, `ld` will silently accept
+ * binaries up to 4 MB, hiding overflow until flash time.
+ *
+ * `pico_board_cmake_set_default` is a magic stub: pico.h #defines it
+ * to nothing for the C/asm preprocessor, while generic_board.cmake
+ * scans the header line-by-line and lifts the value into the CMake
+ * scope. See firmware/third_party/pico-sdk/cmake/generic_board.cmake. */
+pico_board_cmake_set_default(PICO_FLASH_SIZE_BYTES, (2 * 1024 * 1024))
 #ifndef PICO_FLASH_SIZE_BYTES
 #define PICO_FLASH_SIZE_BYTES (2u * 1024u * 1024u)
 #endif

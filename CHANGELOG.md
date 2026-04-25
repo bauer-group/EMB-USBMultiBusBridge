@@ -97,17 +97,33 @@ combinations.
 - **Firmware: rpbridge_pico2 board target**. Bare Raspberry Pi
   Pico 2 (RP2350A QFN-60, 4 MB external W25Q32JV) is now a
   first-class build target alongside the rev-B PCB. PIO-UART
-  remapped to GP6/GP7 (rev-B has it on GP33/GP36); I²C #1, SPI #1,
-  RS232 and RS485 phys disabled; user GPIO/PWM whitelist on GP8..15.
-  Build with `cmake -DPICO_BOARD=rpbridge_pico2`. Output:
+  remapped to GP6/GP7 (rev-B has it on GP33/GP36); I²C #1, SPI #1
+  unavailable (the QFN-60 package doesn't bond out the pins).
+  RS232 and RS485 phy automation off (no on-board MAX3232 / SN65HVD72
+  to drive) — but the UART itself is unchanged: a user wires an
+  external MAX3232 / SP3485 to GP0/GP1 + (optional) any free GPIO
+  for RS485 DE and the standard "rpbridge UART 1 (TTL)" CDC carries
+  the bytes. Same applies to CAN: `RPBRIDGE_HAVE_CAN=1` because
+  can2040 only bit-bangs the protocol, the user wires a TJA1051 /
+  MCP2562 transceiver to GP20/GP21. User GPIO/PWM whitelist on
+  GP8..15. Build with `cmake -DPICO_BOARD=rpbridge_pico2`. Output:
   `rpbridge-pico2.uf2`. Lets users get started for $5 without
   custom hardware.
 - **Build infrastructure**: `firmware/CMakeLists.txt` validates
   `PICO_BOARD` against `RPBRIDGE_SUPPORTED_BOARDS`. Output binary
   renamed per variant. `firmware/build-all-variants.sh` builds
-  every variant in one shell loop.
+  every variant in one shell loop (Ninja generator pinned via
+  `RPBRIDGE_CMAKE_GENERATOR`, defaults to `Ninja`).
   `.github/workflows/firmware.yml` matrix axis includes both
-  variants, so every push exercises both targets in 4 jobs.
+  variants, so every push exercises both targets in 4 jobs. Each
+  job now runs a **size-guard step** that parses
+  `__flash_binary_end` from the linker map and `.data + .bss +
+  .ram_vector_table` from `arm-none-eabi-size -A`, fails the build
+  if either exceeds the soft thresholds (`RPBRIDGE_FLASH_BUDGET_KB`
+  = 256, `RPBRIDGE_RAM_BUDGET_KB` = 96), and prints the budget
+  report into `build/size.txt`. The linker still hard-caps at the
+  variant's physical flash via the corrected `pico_flash_region.ld`,
+  so a real overflow is caught at link time regardless.
 - **Firmware M12 — PIO2 applets: WS2812 + DMX512.** Two new
   subsystems land together on the previously unused PIO2 block:
   - **WS2812 / NeoPixel addressable LED strips** as RPBP subsystem
@@ -212,6 +228,21 @@ combinations.
 
 ### Fixed
 
+- **Linker FLASH region was 4 MB on every variant.** The C-side
+  `PICO_FLASH_SIZE_BYTES` in our custom board headers was set
+  correctly (2 MB on rev-B, 4 MB on Pico 2) but never propagated to
+  CMake — the SDK fell back to `rp2350-arm-s.cmake`'s 4 MB platform
+  default and `pico_flash_region.ld` was sized accordingly. An
+  oversized binary on rev-B would have linked clean and only failed
+  at flash time. Fixed by adding the SDK's
+  `pico_board_cmake_set_default(PICO_FLASH_SIZE_BYTES, …)` marker
+  to both board headers (parsed by `cmake/generic_board.cmake`,
+  `pico.h` defines it as a no-op for the C/asm preprocessor). The
+  linker now hard-fails any region overflow with a clear
+  `region 'FLASH' overflowed` diagnostic at link time. Verified in
+  `firmware/build/{rp2354b,pico2}/pico_flash_region.ld`:
+  rev-B → `LENGTH = (2 * 1024 * 1024)`,
+  pico2 → `LENGTH = (4 * 1024 * 1024)`.
 - **Fat-pointer cookie bug across all 5 FFI modules.** Every
   `ffi/{gpio,i2c,spi,pwm,iio}.rs` stored `Box::into_raw(Box<dyn
   Trait>)` as a thin `*mut c_void`, discarding the trait object's

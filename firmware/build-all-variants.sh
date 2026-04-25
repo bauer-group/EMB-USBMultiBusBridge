@@ -32,11 +32,17 @@ else
     VARIANTS=("${ALL_VARIANTS[@]}")
 fi
 
+# Pick the same generator CI uses (Ninja). On Windows without VS, the
+# default of "NMake Makefiles" requires nmake which isn't part of the
+# pico-sdk toolchain. Ninja is shipped alongside it (~/.pico-sdk/ninja/).
+GENERATOR="${RPBRIDGE_CMAKE_GENERATOR:-Ninja}"
+
 for variant in "${VARIANTS[@]}"; do
     build_dir="$here/build/${variant#rpbridge_}"
     echo
-    echo "==> $variant — configuring in $build_dir"
+    echo "==> $variant — configuring in $build_dir (generator: $GENERATOR)"
     cmake -S "$here" -B "$build_dir" \
+        -G "$GENERATOR" \
         -DPICO_BOARD="$variant" \
         -DPICO_PLATFORM=rp2350 \
         -DCMAKE_BUILD_TYPE=Release

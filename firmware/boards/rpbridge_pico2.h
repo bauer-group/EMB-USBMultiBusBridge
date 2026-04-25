@@ -3,18 +3,40 @@
  * Copyright (c) 2026 BAUER GROUP
  *
  * Custom board header for the Raspberry Pi Pico 2 — RP2350A in the
- * QFN-60 package, with an external 4 MB W25Q32JV QSPI flash. Same
- * silicon as the RP2354B (rev-B board) but only GP0..GP29 are pinned
- * out, so a few subsystems collapse:
+ * QFN-60 package, with an external 4 MB W25Q32JV QSPI flash.
  *
- *   - I²C #1 (was GP34/35 on rev-B)         → not available
- *   - SPI #1 breakout (was GP10..15)        → not available
- *   - PIO-UART (was GP33/36 on rev-B)       → remapped to GP6/GP7
- *   - RS232 / RS485 transceivers            → not populated
+ * Same silicon as the RP2354B (rev-B board) — every subsystem the
+ * chip can do is still available. What changes on the bare Pico 2:
  *
- * The other subsystems map identically. Capability map advertises
- * only what's present so the Linux driver spawns the right
- * aux_devices automatically.
+ *   1. **Pinout (truly absent on QFN-60).** Only GP0..GP29 are
+ *      bonded out, so:
+ *        - I²C #1 (was GP34/35 on rev-B)   → physically not pinned
+ *        - SPI #1 breakout (was GP10..15)   → physically not pinned
+ *        - PIO-UART (was GP33/36 on rev-B)  → remapped to GP6/GP7
+ *
+ *   2. **Transceivers (not populated, but the bus is still there).**
+ *      The RP2350 just produces TTL/CMOS-level signals on its UART
+ *      and CAN pins. On rev-B those drive on-board MAX3232 / SN65HVD72
+ *      / TJA1051 ICs with their DE/EN/SHDN pins managed by firmware.
+ *      On the bare Pico 2 there is no transceiver IC — but the same
+ *      TX/RX/CAN pins are exposed on the standard GP0..GP29 header
+ *      and a user can wire any external transceiver:
+ *
+ *        - external MAX3232 on GP0/GP1 → real RS232 levels
+ *        - external SP3485 / MAX485 on GP0/GP1 + a free GPIO for DE
+ *          (driven via the GPIO subsystem) → real RS485 half-duplex
+ *        - external TJA1051 / MCP2562 on GP20/GP21 → real CAN bus
+ *
+ *      Hence: RPBRIDGE_HAVE_CAN stays 1 (can2040 doesn't need an
+ *      on-board transceiver — it bit-bangs the protocol), and
+ *      RPBRIDGE_HAVE_RS232_PHY / RPBRIDGE_HAVE_RS485_PHY stay 0
+ *      (they specifically gate the *automated* DE/EN/SHDN GPIO
+ *      management — the bare board has nothing to automate). The
+ *      universal "rpbridge UART 1 (TTL)" CDC is the access path
+ *      regardless of which transceiver the user wires.
+ *
+ * Capability map advertises only the auto-managed phys (none here);
+ * external transceivers are out-of-band and pure user integration.
  *
  * Selected via CMake `-DPICO_BOARD=rpbridge_pico2`.
  */
@@ -35,7 +57,13 @@
 #endif
 
 /* External 4 MB QSPI flash on the Pi Pico 2 reference design
- * (W25Q32JV). The pico-sdk default boot stage 2 covers this part. */
+ * (W25Q32JV). The pico-sdk default boot stage 2 covers this part.
+ *
+ * `pico_board_cmake_set_default` sets the same value on the CMake
+ * side so it propagates into pico_flash_region.ld → the linker's
+ * FLASH region matches the physical part exactly. See the matching
+ * comment in firmware/boards/rpbridge_rp2354b.h for the rationale. */
+pico_board_cmake_set_default(PICO_FLASH_SIZE_BYTES, (4 * 1024 * 1024))
 #ifndef PICO_FLASH_SIZE_BYTES
 #define PICO_FLASH_SIZE_BYTES (4u * 1024u * 1024u)
 #endif
@@ -182,17 +210,26 @@
 #define RPBRIDGE_CAN_RX_PIN 21
 #endif
 
-/* ───── UART transceivers — NOT populated on bare Pi Pico 2 ─────────── */
-
+/* ───── UART transceivers — no on-board PHY automation ──────────────── *
+ *
+ * RS232 / RS485 are still reachable: the user wires an external
+ * MAX3232 / SP3485 to UART0's TX/RX (GP0/GP1) and accesses the bus
+ * via the standard "rpbridge UART 1 (TTL)" CDC. For RS485 half-duplex
+ * the user picks any free GPIO as DE and toggles it via the GPIO
+ * subsystem (or a HAT does it autonomously).
+ *
+ * What's *0* on this variant is the firmware's automated DE/EN/SHDN
+ * pin claiming — there's nothing on the PCB to drive, so the phy
+ * module compiles to no-op stubs (see uart_phy.c #if guards). */
 #ifndef RPBRIDGE_HAVE_RS232_PHY
 #define RPBRIDGE_HAVE_RS232_PHY  0
 #endif
 #ifndef RPBRIDGE_HAVE_RS485_PHY
 #define RPBRIDGE_HAVE_RS485_PHY  0
 #endif
-/* The RS232/RS485 control pins are inert on this variant but kept
- * defined so the build doesn't trip on a missing identifier. The
- * #if RPBRIDGE_HAVE_*_PHY guards in uart_phy.c keep them unused. */
+/* Inert sentinels — kept defined so source files referencing the
+ * macros compile. uart_phy.c gates all uses behind RPBRIDGE_HAVE_*_PHY
+ * which short-circuits to 0 here. */
 #ifndef RPBRIDGE_RS485_DE_PIN
 #define RPBRIDGE_RS485_DE_PIN  255u
 #endif
