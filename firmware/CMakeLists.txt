@@ -26,17 +26,35 @@ endif()
 
 set(PICO_BOARD_HEADER_DIRS "${CMAKE_CURRENT_LIST_DIR}/boards")
 
+# Supported board variants. Both share the RP2350 platform; only the
+# pin map and enabled features differ. Build one variant per build
+# directory:
+#
+#   cmake -S firmware -B build/rev-b -DPICO_BOARD=rpbridge_rp2354b
+#   cmake -S firmware -B build/pico2 -DPICO_BOARD=rpbridge_pico2
+#
+# The output .uf2 is named after the board for unambiguous flashing.
+set(RPBRIDGE_SUPPORTED_BOARDS rpbridge_rp2354b rpbridge_pico2)
+
 # PICO_BOARD / PICO_PLATFORM MUST be set before pico_sdk_import.cmake is
 # included — the SDK reads them during its own include to pick defaults
 # for compiler, board header, and TinyUSB BSP path. A late `if(NOT)`
 # guard after the include arrives too late: the SDK has already defaulted
 # to PICO_BOARD=pico / PICO_PLATFORM=rp2040.
 if(NOT PICO_BOARD)
-    set(PICO_BOARD rpbridge_rp2354b CACHE STRING "Target board")
+    set(PICO_BOARD rpbridge_rp2354b CACHE STRING
+        "Target board (one of: ${RPBRIDGE_SUPPORTED_BOARDS})")
+endif()
+if(NOT PICO_BOARD IN_LIST RPBRIDGE_SUPPORTED_BOARDS)
+    message(FATAL_ERROR
+        "Unknown PICO_BOARD '${PICO_BOARD}'.\n"
+        "Supported variants: ${RPBRIDGE_SUPPORTED_BOARDS}\n"
+        "Add a new board header under firmware/boards/ to extend this list.")
 endif()
 if(NOT PICO_PLATFORM)
     set(PICO_PLATFORM rp2350 CACHE STRING "Target platform")
 endif()
+message(STATUS "RPBridge: building for board '${PICO_BOARD}' on platform '${PICO_PLATFORM}'")
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/pico_sdk_import.cmake)
 
@@ -47,7 +65,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/pico_sdk_import.cmake)
 
 project(rpbridge
     VERSION      0.1.0
-    DESCRIPTION  "RPBridge — USB Multi-Bus Bridge firmware for RP2354B"
+    DESCRIPTION  "RPBridge — USB Multi-Bus Bridge firmware (variant: ${PICO_BOARD})"
     LANGUAGES    C CXX ASM)
 
 set(CMAKE_C_STANDARD             11)
@@ -213,6 +231,14 @@ target_link_libraries(rpbridge PRIVATE
 # Log") — see src/usb/cdc_glue.c once the CDC glue module lands.
 pico_enable_stdio_usb(rpbridge 0)
 pico_enable_stdio_uart(rpbridge 1)
+
+# Name the output after the board variant so a multi-board build
+# directory leaves unambiguous artefacts: rpbridge-rev-b.uf2,
+# rpbridge-pico2.uf2, etc. The trimmed suffix drops the
+# "rpbridge_" prefix that is the board-header convention.
+string(REPLACE "rpbridge_" "" _rpb_output_suffix "${PICO_BOARD}")
+set_target_properties(rpbridge PROPERTIES
+    OUTPUT_NAME "rpbridge-${_rpb_output_suffix}")
 
 pico_add_extra_outputs(rpbridge)
 

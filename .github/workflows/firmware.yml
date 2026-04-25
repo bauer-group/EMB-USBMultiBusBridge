@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board:       [rpbridge_rp2354b]
+        board:       [rpbridge_rp2354b, rpbridge_pico2]
         build_type:  [Release, RelWithDebInfo]
     steps:
       - name: Checkout (with submodules)
@@ -80,16 +80,29 @@ jobs:
         working-directory: firmware
         run: cmake --build build --parallel
 
+      - name: Resolve artefact basename
+        id: names
+        working-directory: firmware
+        run: |
+          # The CMake config sets OUTPUT_NAME to "rpbridge-<suffix>"
+          # where <suffix> is the board name minus the "rpbridge_"
+          # prefix. Mirror that here so artefact paths line up.
+          suffix="${{ matrix.board }}"
+          suffix="${suffix#rpbridge_}"
+          echo "basename=rpbridge-${suffix}" >> "$GITHUB_OUTPUT"
+
       - name: Size report
         working-directory: firmware
         run: |
-          arm-none-eabi-size --format=berkeley build/rpbridge.elf | tee build/size.txt
-          arm-none-eabi-size -A          build/rpbridge.elf | tee -a build/size.txt
+          base="${{ steps.names.outputs.basename }}"
+          arm-none-eabi-size --format=berkeley "build/${base}.elf" | tee build/size.txt
+          arm-none-eabi-size -A          "build/${base}.elf" | tee -a build/size.txt
 
       - name: Checksums
         working-directory: firmware/build
         run: |
-          sha256sum rpbridge.uf2 rpbridge.elf rpbridge.bin rpbridge.hex \
+          base="${{ steps.names.outputs.basename }}"
+          sha256sum "${base}.uf2" "${base}.elf" "${base}.bin" "${base}.hex" \
             > CHECKSUMS.txt
 
       - name: Upload artifacts
@@ -97,10 +110,10 @@ jobs:
         with:
           name: firmware-${{ matrix.board }}-${{ matrix.build_type }}
           path: |
-            firmware/build/rpbridge.uf2
-            firmware/build/rpbridge.elf
-            firmware/build/rpbridge.bin
-            firmware/build/rpbridge.hex
+            firmware/build/${{ steps.names.outputs.basename }}.uf2
+            firmware/build/${{ steps.names.outputs.basename }}.elf
+            firmware/build/${{ steps.names.outputs.basename }}.bin
+            firmware/build/${{ steps.names.outputs.basename }}.hex
             firmware/build/size.txt
             firmware/build/CHECKSUMS.txt
           if-no-files-found: error
