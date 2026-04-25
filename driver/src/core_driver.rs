@@ -328,8 +328,14 @@ fn clone_caps_for_spawn(caps: &Capabilities) -> Vec<(KVec<u8>, u16)> {
 
 /* ───── USB driver glue ────────────────────────────────────────────── */
 
-const RPBRIDGE_USB_VID: u16 = 0x1209;
-const RPBRIDGE_USB_PID: u16 = 0xFFFE;
+/* PRE-PRODUCTION VID/PID — keep in lock-step with
+ * firmware/src/usb/usb_descriptors.c. The current PID is from the
+ * pid.codes testing range (0xFFF0..0xFFFF) and WILL collide with
+ * any other developer's testing device on the same host. Tracked in
+ * docs/usb-vid-pid.md and firmware/TODO.md. Replace before shipping
+ * production hardware. */
+const RPBRIDGE_USB_VID: u16 = 0x1209;   // pid.codes Open Hardware VID
+const RPBRIDGE_USB_PID: u16 = 0xFFFE;   // TESTING-RANGE — replace before release
 
 pub(crate) struct RpbridgeDriver;
 

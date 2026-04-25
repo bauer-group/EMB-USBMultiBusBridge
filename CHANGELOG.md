@@ -109,6 +109,24 @@ combinations.
   `.github/workflows/firmware.yml` matrix axis includes both
   variants, so every push exercises both targets in 4 jobs.
 
+### Hardened (forward-compat)
+
+- **Status code mapping**: `Status::try_from` in the driver now
+  gracefully degrades unknown status bytes (16..=255) to
+  `Status::EIo` instead of raising `EPROTO`. RPBP v1 §16 promises
+  MINOR bumps may add status codes; an old driver against future
+  firmware now surfaces such codes as a generic `EIO` to userland
+  rather than misclassifying them as protocol corruption. Two new
+  inline tests pin the contract.
+- **USB VID/PID pre-production marking**: the pid.codes testing-
+  range PID `0xFFFE` is now flagged with explicit warnings in
+  `usb_descriptors.c` and `core_driver.rs`, plus a dedicated
+  [`docs/usb-vid-pid.md`](docs/usb-vid-pid.md) that documents the
+  allocation strategy (one VID/PID per device, subsystems via
+  Interface-Class), the pre-production gates, and why we chose
+  pid.codes over USB-IF for v1. The release-blocking checklist
+  lives in `firmware/TODO.md` → "Pre-production gates".
+
 ### Fixed
 
 - **Fat-pointer cookie bug across all 5 FFI modules.** Every

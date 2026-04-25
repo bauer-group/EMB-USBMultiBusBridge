@@ -11,8 +11,10 @@
  *   6     Vendor (WinUSB)      "rpbridge Control" — RPBP transport
  *   7     Vendor (gs_usb)      "rpbridge CAN"     — SocketCAN-compatible
  *
- * VID/PID placeholder (update before first release):
- *   0x1209 / 0xXXXX  — pid.codes free tier for open-hardware projects.
+ * VID/PID — see the §VID / PID block below for the production
+ * allocation status. The current values are pre-production and MUST
+ * NOT ship in a public hardware release without the pid.codes
+ * registration entry being filed first. See docs/usb-vid-pid.md.
  */
 
 #include "tusb.h"
@@ -24,10 +26,27 @@
 
 #include <string.h>
 
-/* ───── VID / PID placeholder (to be assigned via pid.codes) ─────────── */
+/* ───── VID / PID ──────────────────────────────────────────────────── *
+ *
+ * STATUS: PRE-PRODUCTION. The PID below is from the pid.codes
+ * "testing" range (0xFFF0..0xFFFF), shared by every developer who
+ * has not yet completed the pid.codes registration. Two RPBridge
+ * boards on the same Linux host while using this PID would collide
+ * with anyone else's testing-range device — fine for development,
+ * UNACCEPTABLE for production hardware.
+ *
+ * Action required before first hardware shipment:
+ *   1. File a pid.codes registration entry pointing at this repo.
+ *      (Wiki: https://pid.codes/howto/ — kostenlos für Open-Hardware.)
+ *   2. Replace RPBRIDGE_USB_PID with the allocated value.
+ *   3. Update driver/src/core_driver.rs to match.
+ *   4. Update docs/usb-vid-pid.md with the allocation timestamp.
+ *
+ * Tracked in firmware/TODO.md → "Pre-production gates".
+ */
 
-#define RPBRIDGE_USB_VID    0x1209   /* pid.codes (replace with real PID before shipping) */
-#define RPBRIDGE_USB_PID    0xFFFE   /* temporary "testing" PID per pid.codes policy */
+#define RPBRIDGE_USB_VID    0x1209   /* pid.codes — Open Hardware VID */
+#define RPBRIDGE_USB_PID    0xFFFE   /* TESTING-RANGE — see PRE-PRODUCTION block above */
 
 #define RPBRIDGE_USB_BCD    0x0210   /* USB 2.1 to enable BOS / MS OS 2.0 */
 

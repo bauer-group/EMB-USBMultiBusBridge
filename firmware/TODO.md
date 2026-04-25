@@ -387,3 +387,20 @@ into board-header macros so additional variants land as
       fallback in `main.c::led_init` would be cleaner.
 - [ ] **CI `grep` check** — fail the build if any new GP-pin
       literal lands in `firmware/src/` to enforce macro discipline.
+
+## Pre-production gates
+
+Things that must be checked off before any public hardware shipment.
+Tracking lives here so we don't ship a board with a placeholder.
+
+- [ ] **USB VID/PID** — `RPBRIDGE_USB_PID = 0xFFFE` is from the
+      pid.codes testing range and collides with every other
+      developer's testing-range device. File a pid.codes
+      registration, replace the constant in
+      `firmware/src/usb/usb_descriptors.c` AND
+      `driver/src/core_driver.rs`. Full checklist + rationale in
+      [`docs/usb-vid-pid.md`](../docs/usb-vid-pid.md).
+- [ ] **bcdDevice** — bump from `0x0100` to mark first
+      production-ID release.
+- [ ] **udev rules + umockdev recording** — regenerate after the
+      real PID lands so distribution packages match.
