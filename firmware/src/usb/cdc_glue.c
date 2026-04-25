@@ -69,13 +69,16 @@
 #define NO_ACTIVE_UART0_CDC    (-1)
 static int g_active_uart0_cdc = NO_ACTIVE_UART0_CDC;
 
-/* Phy-bank UART0 pins (hardware-design.md §6): GP0 TX, GP1 RX. */
-#define UART0_TX_PIN            0u
-#define UART0_RX_PIN            1u
+/* Phy-bank UART0 pins from the active board header. */
+#define UART0_TX_PIN            RPBRIDGE_UART0_TX_PIN
+#define UART0_RX_PIN            RPBRIDGE_UART0_RX_PIN
 
-/* PIO UART pins (hardware-design.md §6): GP33 TX, GP36 RX. */
-#define PIO_UART_TX_PIN         33u
-#define PIO_UART_RX_PIN         36u
+/* PIO-UART pins from the active board header. Conditional on
+ * RPBRIDGE_HAVE_PIO_UART — boards that don't expose a 4th CDC pad
+ * the values to 0 and the compile-time test below short-circuits
+ * the second uart_pio_init call. */
+#define PIO_UART_TX_PIN         RPBRIDGE_PIO_UART_TX_PIN
+#define PIO_UART_RX_PIN         RPBRIDGE_PIO_UART_RX_PIN
 
 /* Default baud at power-on. SetLineCoding from the host overrides. */
 #define UART_DEFAULT_BAUD       115200u
@@ -89,13 +92,15 @@ static int g_active_uart0_cdc = NO_ACTIVE_UART0_CDC;
 void cdc_glue_init(void)
 {
     /* UART0 HW + phy-bank. uart_phy_init() starts in OFF state: all
-     * transceivers tri-stated. A phy is selected as soon as the host
-     * opens one of the phy-bank CDCs and asserts DTR. */
+     * transceivers tri-stated (or directly TTL on bare boards where
+     * RPBRIDGE_HAVE_RS232_PHY + RPBRIDGE_HAVE_RS485_PHY are 0). */
     uart_hw_init (0u, UART0_TX_PIN, UART0_RX_PIN);
     uart_phy_init();
 
+#if RPBRIDGE_HAVE_PIO_UART
     /* PIO-UART on PIO1 — TTL-only, always on. */
     uart_pio_init(0u, PIO_UART_TX_PIN, PIO_UART_RX_PIN, UART_DEFAULT_BAUD);
+#endif
 }
 
 /* ───── Helpers ──────────────────────────────────────────────────────── */
