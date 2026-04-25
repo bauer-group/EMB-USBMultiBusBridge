@@ -1,11 +1,25 @@
-# RPBridge — USB Multi-Bus Bridge on RP2354B
+# RPBridge — USB Multi-Bus Bridge for RP2350
 
 > **Professional-grade USB-to-multi-bus bridge firmware + Linux driver stack
-> for the Raspberry Pi RP2354B.** Exposes I²C, SPI, UART (RS232/RS485/TTL),
-> GPIO, PWM, ADC and CAN 2.0B to a Linux host as if they were native SoC
-> peripherals — usable via `/dev/i2c-N`, `/dev/spidevN.M`, `/dev/gpiochipN`,
-> `/dev/ttyACM*`, `can0`, and `/sys/bus/iio/devices/…`, with stock userland
-> tools (`i2cdetect`, `libgpiod`, `can-utils`, `spidev_test`, `iio_info`).
+> for Raspberry Pi RP2350-family silicon.** Exposes I²C, SPI, UART
+> (RS232/RS485/TTL), GPIO, PWM, ADC and CAN 2.0B to a Linux host as if
+> they were native SoC peripherals — usable via `/dev/i2c-N`,
+> `/dev/spidevN.M`, `/dev/gpiochipN`, `/dev/ttyACM*`, `can0`, and
+> `/sys/bus/iio/devices/…`, with stock userland tools (`i2cdetect`,
+> `libgpiod`, `can-utils`, `spidev_test`, `iio_info`).
+>
+> Two hardware targets are supported out of the box (ADR-0008):
+>
+> - **`rpbridge_rp2354b`** — the BAUER GROUP custom rev-B PCB
+>   (RP2354B, QFN-80, 48 GPIOs). Full feature set: 4× CDC-ACM with
+>   RS232 / RS485 / TTL phys, 2× I²C, 2× SPI, 11 user GPIOs, 6 PWM,
+>   4 ADC + temp, CAN.
+> - **`rpbridge_pico2`** — bare Raspberry Pi Pico 2 (RP2350A, QFN-60,
+>   30 GPIOs, $5). Subset feature set: 1× I²C, 1× SPI, 8 user GPIOs,
+>   6 PWM, 4 ADC + temp, CAN, single TTL UART. RS232/RS485 require
+>   the user to wire an external transceiver.
+>
+> Build: `cmake -S firmware -B build -DPICO_BOARD=rpbridge_{rp2354b|pico2}`
 
 ---
 
@@ -133,10 +147,10 @@ code and Rust userspace.
 
 ## Licensing
 
-* Firmware: **BSD-3-Clause** (pico-sdk-compatible).
-* Linux driver: **GPL-2.0** (kernel requirement).
-* Userspace Rust crates & CLI: **Apache-2.0 OR MIT** (Rust-ecosystem default).
-* Documentation: **CC-BY-4.0**.
+- Firmware: **BSD-3-Clause** (pico-sdk-compatible).
+- Linux driver: **GPL-2.0** (kernel requirement).
+- Userspace Rust crates & CLI: **Apache-2.0 OR MIT** (Rust-ecosystem default).
+- Documentation: **CC-BY-4.0**.
 
 SPDX identifiers are set on every source file. See [`LICENSE`](LICENSE) for
 the primary license text and [`docs/licensing.md`](docs/licensing.md) for

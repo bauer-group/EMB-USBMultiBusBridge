@@ -340,3 +340,50 @@ Tracked in `driver/TODO.md`; summarised here for cross-reference:
 
 See `driver/TODO.md` for the client/adapter completion state
 (M10c..M10i).
+
+## M11 — Multi-board support (ADR-0008)
+
+Refactored every hardcoded GP-pin and per-subsystem instance count
+into board-header macros so additional variants land as
+"new header file + CMake matrix entry" rather than source edits.
+
+- [x] **M11.1** — extended `boards/rpbridge_rp2354b.h` with the full
+      peripheral pin map + feature flags (`RPBRIDGE_HAVE_*`) for the
+      flagship rev-B board. No source change; defaults preserve
+      existing behaviour exactly.
+- [x] **M11.2** — `pin_broker.h` `PIN_BROKER_NUM_PINS` and `adc.{h,c}`
+      channel map driven by board macros.
+- [x] **M11.3** — `gpio.{h,c}` and `pwm.{h,c}` user whitelists driven
+      by `RPBRIDGE_USER_GPIO/PWM_PIN_LIST`.
+- [x] **M11.4** — `i2c_hw.{h,c}` and `spi.{h,c}` use board pin macros
+      and gate bus #1 on `RPBRIDGE_HAVE_I2C1` / `RPBRIDGE_HAVE_SPI1`.
+- [x] **M11.5** — `uart_phy.c` and `cdc_glue.c` migrated to board
+      macros; phy bank gated on `RPBRIDGE_HAVE_RS232_PHY` /
+      `RPBRIDGE_HAVE_RS485_PHY`; PIO-UART gated on
+      `RPBRIDGE_HAVE_PIO_UART`.
+- [x] **M11.6** — `capabilities.c` is fully board-flag driven: every
+      array length and per-bus entry is computed at compile time
+      from `RPBRIDGE_HAVE_*`. Single source of truth for "what does
+      this build expose".
+- [x] **M11.7** — `boards/rpbridge_pico2.h` added (Pi Pico 2,
+      RP2350A QFN-60). I²C #1 + SPI #1 absent, no transceivers,
+      PIO-UART remapped to GP6/GP7, user GPIO/PWM on GP8-15.
+- [x] **M11.8** — `CMakeLists.txt` validates `PICO_BOARD` against
+      `RPBRIDGE_SUPPORTED_BOARDS`, output binary renamed per variant
+      (`rpbridge-rev-b.uf2`, `rpbridge-pico2.uf2`).
+      `firmware/build-all-variants.sh` builds every variant in one
+      shell loop. `.github/workflows/firmware.yml` matrix axis
+      `board` includes both variants → 4-job matrix per push.
+
+### M11 follow-ups (non-blocking)
+
+- [ ] **CDC count per variant** — TUSB `CFG_TUD_CDC` is a compile
+      constant; bare-board variants currently enumerate 4 CDCs
+      where only TTL is meaningful. A variant-driven CDC count
+      collapses to 1 CDC on Pi Pico 2.
+- [ ] **Single-LED gate** — Pi Pico 2 has only GP25 (green LED);
+      the firmware's PWM-driven RGB LED is collapsed onto the same
+      pin. A `RPBRIDGE_HAVE_RGB_LED` flag with a single-LED
+      fallback in `main.c::led_init` would be cleaner.
+- [ ] **CI `grep` check** — fail the build if any new GP-pin
+      literal lands in `firmware/src/` to enforce macro discipline.

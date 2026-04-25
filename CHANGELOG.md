@@ -80,6 +80,34 @@ combinations.
   exercised end-to-end without USB hardware; per-subsystem
   `client_tests` modules cover every opcode byte-for-byte plus
   errno propagation (EBUSY, ETIMEDOUT, ENODEV, ENOTSUP).
+- **ADR-0008**: Multi-board variants via board-header + feature-flag
+  refactor. Establishes that every board-specific value lives in
+  `firmware/boards/<name>.h` and every source file consumes it via
+  `RPBRIDGE_*` macros; new variants are a header file + a CMake
+  matrix entry, no source edits.
+- **Firmware M11.1..M11.8**: full multi-board refactor across the
+  firmware tree. `pin_broker`, `gpio`, `pwm`, `i2c_hw`, `spi`,
+  `uart_phy`, `cdc_glue`, `adc`, and `capabilities.c` all now
+  consume `RPBRIDGE_*_PIN` / `RPBRIDGE_USER_*_PIN_LIST` /
+  `RPBRIDGE_HAVE_*` from the active board header. Subsystems whose
+  hardware is absent (`HAVE_I2C1=0`, `HAVE_RS232_PHY=0`, etc.)
+  collapse to nothing via `#if` guards and disappear from the
+  capability map. The Linux driver picks up these omissions
+  automatically because aux_device spawning is capability-driven.
+- **Firmware: rpbridge_pico2 board target**. Bare Raspberry Pi
+  Pico 2 (RP2350A QFN-60, 4 MB external W25Q32JV) is now a
+  first-class build target alongside the rev-B PCB. PIO-UART
+  remapped to GP6/GP7 (rev-B has it on GP33/GP36); I²C #1, SPI #1,
+  RS232 and RS485 phys disabled; user GPIO/PWM whitelist on GP8..15.
+  Build with `cmake -DPICO_BOARD=rpbridge_pico2`. Output:
+  `rpbridge-pico2.uf2`. Lets users get started for $5 without
+  custom hardware.
+- **Build infrastructure**: `firmware/CMakeLists.txt` validates
+  `PICO_BOARD` against `RPBRIDGE_SUPPORTED_BOARDS`. Output binary
+  renamed per variant. `firmware/build-all-variants.sh` builds
+  every variant in one shell loop.
+  `.github/workflows/firmware.yml` matrix axis includes both
+  variants, so every push exercises both targets in 4 jobs.
 
 ### Fixed
 
