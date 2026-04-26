@@ -201,7 +201,6 @@ void rpbridge_unregister_aux_children(struct rpbridge_dev *dev)
 	int  rpbridge_##name##_register(void)   { return 0; } \
 	void rpbridge_##name##_unregister(void) { }
 
-DEFINE_SUBSYS_STUB(i2c)
 DEFINE_SUBSYS_STUB(spi)
 DEFINE_SUBSYS_STUB(pwm)
 DEFINE_SUBSYS_STUB(iio)
