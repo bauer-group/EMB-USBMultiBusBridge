@@ -69,16 +69,50 @@ impl TryFrom<u8> for MsgType {
     }
 }
 
-bitflags::bitflags! {
-    #[derive(Copy, Clone, Debug)]
-    pub struct Flags: u8 {
-        const CBOR         = 1 << 0;
-        const COMPRESSED   = 1 << 1;
-        const URGENT       = 1 << 2;
-        const FRAGMENT     = 1 << 3;
-        const LAST         = 1 << 4;
-        const CONTINUATION = 1 << 5;
+/// Header flag bits. Bits 6 and 7 are reserved and MUST be zero in v1.
+///
+/// Hand-written instead of `bitflags::bitflags!` because the kernel
+/// build can't pull crates from crates.io. Mirrors the shape of
+/// `rpbridge_protocol::Flags` in userspace one-to-one.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
+pub struct Flags(u8);
+
+impl Flags {
+    pub const CBOR:         Flags = Flags(1 << 0);
+    pub const COMPRESSED:   Flags = Flags(1 << 1);
+    pub const URGENT:       Flags = Flags(1 << 2);
+    pub const FRAGMENT:     Flags = Flags(1 << 3);
+    pub const LAST:         Flags = Flags(1 << 4);
+    pub const CONTINUATION: Flags = Flags(1 << 5);
+
+    /// All-zero flags (no bits set).
+    #[inline]
+    pub const fn empty() -> Self { Self(0) }
+
+    /// Build from a raw header byte, masking out reserved bits 6/7.
+    #[inline]
+    pub const fn from_bits_truncate(bits: u8) -> Self {
+        Self(bits & 0b0011_1111)
     }
+
+    /// Raw header byte form.
+    #[inline]
+    pub const fn bits(self) -> u8 { self.0 }
+
+    /// Returns `true` iff every bit in `other` is set in `self`.
+    #[inline]
+    pub const fn contains(self, other: Flags) -> bool {
+        (self.0 & other.0) == other.0
+    }
+}
+
+impl core::ops::BitOr for Flags {
+    type Output = Flags;
+    fn bitor(self, rhs: Flags) -> Flags { Flags(self.0 | rhs.0) }
+}
+
+impl core::ops::BitOrAssign for Flags {
+    fn bitor_assign(&mut self, rhs: Flags) { self.0 |= rhs.0; }
 }
 
 /* ───── Subsystem IDs ────────────────────────────────────────────── */
@@ -167,7 +201,11 @@ impl TryFrom<u8> for Status {
         // From) so call sites' `?` continues to compile unchanged
         // and so a future opt-in strict mode can return Err here
         // without a wider refactor.
-        Ok(match v {
+        // `use Status::*;` above brings `Ok` into scope as a Status
+        // variant, shadowing `Result::Ok` for this function. Reach for
+        // the fully-qualified form here so the wrapper is the Result
+        // constructor and the inner `Ok` is the Status variant.
+        core::result::Result::Ok(match v {
             0 => Ok, 1 => EAgain, 2 => EInval, 3 => EPerm, 4 => ENoent,
             5 => EIo, 6 => ETimedout, 7 => EMsgSize, 8 => ECrc, 9 => EProto,
             10 => ENotSup, 11 => EBusy, 12 => ECanceled, 13 => ENoSpc,

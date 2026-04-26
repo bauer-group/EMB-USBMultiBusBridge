@@ -65,9 +65,13 @@ kernel::module_usb_driver! {
     license: "GPL v2",
     alias:   ["usb:rpbridge"],
     params:  {
+        // 7.0's params! only accepts `default` + `description`. The
+        // module_param permission field is no longer user-controlled
+        // — kernel R4L picked 0o644 by convention. Reflected: the
+        // sysfs entry at /sys/module/rpbridge/parameters/debug_dump
+        // is owner-writable, world-readable.
         debug_dump: bool {
             default: false,
-            permissions: 0o644,
             description: "Dump received RPBP frames to dmesg (debug only).",
         },
     },
