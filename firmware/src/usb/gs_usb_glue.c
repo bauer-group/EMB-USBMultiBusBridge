@@ -217,8 +217,13 @@ static void can_rx_cb(uint32_t notify, const struct can_hw_frame *msg)
 
     if (notify & CAN_HW_NOTIFY_TX) {
         /* TX-complete: echo the frame with the host-assigned echo_id
-         * so SocketCAN can confirm the skb and release the queue. */
-        if (!echo_pop(&f.echo_id)) f.echo_id = 0u;
+         * so SocketCAN can confirm the skb and release the queue.
+         * Pop into a stack temporary first — `gs_host_frame` is
+         * packed, so `&f.echo_id` is potentially unaligned and gcc
+         * (correctly) refuses to hand its address to a uint32_t*. */
+        uint32_t echo_id = 0u;
+        (void)echo_pop(&echo_id);
+        f.echo_id = echo_id;
         rx_ring_push(&f);
     } else if (notify & CAN_HW_NOTIFY_RX) {
         f.echo_id = GS_USB_ECHO_ID_RX;
