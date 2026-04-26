@@ -18,6 +18,7 @@ design drafts).
 | 0006 | [UART via CDC-ACM only, CAN via gs_usb only](0006-uart-cdc-only-can-gs-usb-only.md) | Accepted |
 | 0007 | [FFI bindings as the interim R4L transport](0007-ffi-bindings-interim.md) | Accepted |
 | 0008 | [Multi-board variants via board-header + feature-flag refactor](0008-multi-board-variants.md) | Accepted |
+| 0009 | [Pin function flexibility — PIN + COUNTER subsystems](0009-pin-function-flexibility.md) | Accepted (M11 in flight) |
 
 Adding a new ADR? Copy the template from `0001-…` and bump the number.
 Every ADR changes the repository — reference it from the code it
