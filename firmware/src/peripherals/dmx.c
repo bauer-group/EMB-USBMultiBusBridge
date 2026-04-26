@@ -70,14 +70,17 @@ static struct dmx_state g_dmx;
 
 /* Drive the configured TX pin LOW or HIGH directly while the SM is
  * paused. The line stays under PIO control; we use the SM's GPIO
- * write port via pio_sm_set_pins_with_mask(). The mask is just the
- * one bit for our pin, so other SMs sharing the block (none in v1)
- * are unaffected. */
+ * write port via pio_sm_set_pins_with_mask64() (the 64-bit variant
+ * supports the full RP2350 0..47 GPIO range — rev-B's DMX pin lives
+ * at GP44, which would overflow the 32-bit mask form). The mask is
+ * just the one bit for our pin, so other SMs sharing the block
+ * (none in v1) are unaffected. */
 static void drive_pin(bool high)
 {
-    pio_sm_set_pins_with_mask(DMX_PIO, g_dmx.sm,
-                              high ? (1u << RPBRIDGE_DMX_TX_PIN) : 0u,
-                              1u << RPBRIDGE_DMX_TX_PIN);
+    const uint64_t mask = (uint64_t)1 << RPBRIDGE_DMX_TX_PIN;
+    pio_sm_set_pins_with_mask64(DMX_PIO, g_dmx.sm,
+                                high ? mask : (uint64_t)0,
+                                mask);
 }
 
 static void emit_break_mab(void)
