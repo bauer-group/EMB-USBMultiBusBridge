@@ -29,6 +29,13 @@
 #[cfg(feature = "cbor")]
 pub mod cap;
 
+/// Per-subsystem wire builders + parsers (sys, gpio, i2c, spi, pwm,
+/// adc, uart, led, dmx, onewire, i2s). Each submodule mirrors one
+/// `RPBP_SUBSYS_*` byte and ships opcode constants alongside
+/// `build_*` / `parse_*` helpers that operate on the result region
+/// of a CMD_REQUEST / CMD_RESPONSE payload.
+pub mod subsys;
+
 mod crc32c;
 pub use crc32c::{crc32c, crc32c_update, CRC32C_INIT};
 
@@ -230,6 +237,29 @@ pub enum Error {
     BadMsgType(u8),
     /// Reserved flag bits (6, 7) are set — reject strictly in v1.
     ReservedFlagBits(u8),
+    /// `subsys` byte is not a known v1 subsystem identifier.
+    /// Raised by `subsys::Subsys::try_from`.
+    BadSubsys(u8),
+    /// A `subsys::*::build_*` helper was handed a destination buffer
+    /// smaller than the encoded request needs.
+    BufferTooSmall {
+        /// Minimum byte count the builder needs.
+        needed: usize,
+        /// Slice length the caller supplied.
+        got: usize,
+    },
+    /// A `subsys::*::parse_*` helper found a response shorter or
+    /// longer than the spec mandates for this opcode.
+    BadResponseLen {
+        /// Expected byte count for this opcode's reply.
+        expected: usize,
+        /// Slice length the parser actually saw.
+        got: usize,
+    },
+    /// A subsystem builder rejected an argument that is structurally
+    /// out of range (e.g. a 5-bit field given a value >= 32). The
+    /// payload is the offending value as a u32 for diagnostics.
+    OutOfRange(u32),
 }
 
 #[cfg(feature = "std")]
@@ -245,6 +275,14 @@ impl core::fmt::Display for Error {
             Error::BadCrc => write!(f, "CRC-32C check failed"),
             Error::BadMsgType(v) => write!(f, "unknown msg_type 0x{v:02X}"),
             Error::ReservedFlagBits(b) => write!(f, "reserved flag bits set: 0x{b:02X}"),
+            Error::BadSubsys(v) => write!(f, "unknown subsys 0x{v:02X}"),
+            Error::BufferTooSmall { needed, got } => {
+                write!(f, "buffer too small: need {needed} bytes, got {got}")
+            }
+            Error::BadResponseLen { expected, got } => {
+                write!(f, "unexpected response length: want {expected}, got {got}")
+            }
+            Error::OutOfRange(v) => write!(f, "argument out of range: {v}"),
         }
     }
 }
