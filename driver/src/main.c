@@ -36,6 +36,7 @@
 #include "cap.h"
 #include "rpbp.h"
 #include "rpbridge.h"
+#include "session.h"
 
 /* ───── Module metadata ──────────────────────────────────────────── */
 
@@ -165,6 +166,11 @@ static int rpbridge_probe(struct usb_interface *intf,
 		goto err_put_udev;
 	}
 
+	/* Stash before HELLO so a hostile init can find us back even
+	 * if the helper bails halfway. The disconnect path nulls
+	 * intfdata before tearing the kref down, so the only effect
+	 * of an early stash is that disconnect() correctly releases
+	 * the partially-initialised state. */
 	usb_set_intfdata(intf, dev);
 
 	dev_info(&intf->dev,
@@ -173,16 +179,44 @@ static int rpbridge_probe(struct usb_interface *intf,
 		 dev->bulk_in_addr, dev->bulk_out_addr,
 		 dev->bulk_in_size, dev->bulk_out_size);
 
+	ret = rpbridge_session_hello(dev);
+	if (ret) {
+		dev_err(&intf->dev, "rpbridge: HELLO failed: %d\n", ret);
+		goto err_clear_intfdata;
+	}
+
+	ret = rpbridge_session_fetch_caps(dev);
+	if (ret) {
+		dev_err(&intf->dev,
+			"rpbridge: capability fetch failed: %d\n", ret);
+		goto err_clear_intfdata;
+	}
+
+	dev_info(&intf->dev,
+		 "rpbridge: firmware='%s' board='%s' protocol=%u.%u.%u "
+		 "(buses advertised: %zu)\n",
+		 dev->caps->fw[0]    ? dev->caps->fw    : "?",
+		 dev->caps->board[0] ? dev->caps->board : "?",
+		 dev->caps->proto[0], dev->caps->proto[1], dev->caps->proto[2],
+		 dev->caps->bus_count);
+
 	/*
-	 * TODO(rpbridge): once the CBOR cap parser lands, do_hello()
-	 * and rpbp_caps_parse() run here, followed by
-	 * spawn_aux_children() per advertised subsystem. For now the
-	 * driver attaches as a passive USB hold so the device
-	 * doesn't fall back to the cdc_acm class driver (which
-	 * would claim only the CDC-ACM interface anyway, but the
-	 * symmetry helps debugging).
+	 * TODO(rpbridge): spawn_aux_children() per advertised subsystem
+	 * lands in the next commit. Until then the driver attaches
+	 * fully but exposes no userspace device — the hello + caps
+	 * path is what userland tooling can already exercise via
+	 * upcoming ioctls.
 	 */
 	return 0;
+
+err_clear_intfdata:
+	/* After usb_set_intfdata() any latent caller could in principle
+	 * have grabbed a reference. Drop our initial kref and let the
+	 * release callback be the single chokepoint that frees state +
+	 * usb_put_dev()s the parent — no double-free, no leaks. */
+	usb_set_intfdata(intf, NULL);
+	rpbridge_dev_put(dev);
+	return ret;
 
 err_put_udev:
 	usb_put_dev(dev->udev);
