@@ -190,11 +190,13 @@ build_driver() {
     local fmt_rc=$?
     set -e
     if (( fmt_rc != 0 )); then
-        # rustfmt prints "Diff in <path> at line N:" for each hunk —
-        # count unique paths to get a useful "N file(s) need format".
+        # Count unique paths from rustfmt's "Diff in <path> at line N:"
+        # markers to summarise reach. Failure of grep (no matches) is
+        # tolerated via `|| true` so pipefail doesn't propagate.
         local n
-        n=$(grep -oE 'Diff in [^ ]+ at' /tmp/driver-rustfmt.diff 2>/dev/null \
-            | sort -u | wc -l || echo "?")
+        n=$( { grep -oE 'Diff in [^ ]+ at' /tmp/driver-rustfmt.diff \
+                || true; } 2>/dev/null \
+             | sort -u | wc -l | tr -d '[:space:]' )
         log "driver: rustfmt advisory diff across $n file(s) (not gating)"
     else
         log "driver: rustfmt clean"
