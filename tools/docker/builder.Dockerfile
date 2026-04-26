@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libstdc++-arm-none-eabi-newlib \
         cmake ninja-build python3 python3-pip libusb-1.0-0-dev \
     && \
-    # Driver: Linux 6.18 headers + matching distro rustc (Canonical
+    # Driver: Linux kernel headers + matching distro rustc (Canonical
     # ships rustc paired to the kernel's min-tool-version pin) + the
     # bindgen / clang stack needed for kernel Rust. rustfmt + clippy
     # come from rustup further down — Ubuntu 26.04 doesn't package
@@ -50,6 +50,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         linux-headers-generic \
         rustc rust-src cargo bindgen \
         clang lld llvm libelf-dev libssl-dev bc kmod cpio flex bison \
+        pahole \
+    && \
+    # Pre-built kernel Rust artefacts (core/alloc/kernel rmeta files,
+    # generated bindgen output) live in a SEPARATE package whose name
+    # carries the kernel ABI version. The headers package symlinks
+    # `rust/` into this directory, so out-of-tree Rust modules can't
+    # build without it. There is no `linux-lib-rust-generic` meta
+    # that auto-picks it, so we derive the kver from /usr/src/ and
+    # install the exact match.
+    KVER=$(ls -1 /usr/src/ \
+            | grep -E "^linux-headers-[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic$" \
+            | sort -V | tail -1 \
+            | sed "s/linux-headers-//") \
+    && apt-get install -y --no-install-recommends "linux-lib-rust-$KVER" \
     && \
     # Userspace: libudev/libusb (rusb / libudev-rs FFI) + aarch64 cross
     # linker for the cross-build matrix. The aarch64 std-lib comes from
