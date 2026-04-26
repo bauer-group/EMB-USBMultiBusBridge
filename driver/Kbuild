@@ -21,7 +21,8 @@ rpbridge-y := \
 	src/auxbus.o        \
 	src/gpio.o          \
 	src/i2c.o           \
-	src/spi.o
+	src/spi.o           \
+	src/pwm.o
 
 # Strict warning posture matching the firmware's bar. Kernel build
 # already adds -Wall + -Wextra subset; these are the additional
