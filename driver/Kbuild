@@ -26,7 +26,8 @@ rpbridge-y := \
 	src/iio.o           \
 	src/led.o           \
 	src/dmx.o           \
-	src/onewire.o
+	src/onewire.o       \
+	src/i2s.o
 
 # Strict warning posture matching the firmware's bar. Kernel build
 # already adds -Wall + -Wextra subset; these are the additional

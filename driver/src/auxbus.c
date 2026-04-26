@@ -202,11 +202,11 @@ void rpbridge_unregister_aux_children(struct rpbridge_dev *dev)
 	int  rpbridge_##name##_register(void)   { return 0; } \
 	void rpbridge_##name##_unregister(void) { }
 
-/* led.c provides the real impl; dmx/onewire/i2s land in their own
- * commits and use stubs here until then so spawn_aux_children() can
- * still skip-or-bind the auxbus children for those classes. */
+/* All nine subsystem .c files now provide real impls — no stubs
+ * left. The DEFINE_SUBSYS_STUB macro could be removed at this
+ * point but stays here in case a future RPBP subsystem (say
+ * RPBP_SUBSYS_CAN_RAW or RPBP_SUBSYS_USB_HID) lands as a stub
+ * placeholder before its kernel binding ships. */
 #define DEFINE_SUBSYS_STUB(name) \
 	int  rpbridge_##name##_register(void)   { return 0; } \
 	void rpbridge_##name##_unregister(void) { }
-
-DEFINE_SUBSYS_STUB(i2s)
