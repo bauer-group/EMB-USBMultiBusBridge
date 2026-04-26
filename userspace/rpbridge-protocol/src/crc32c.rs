@@ -87,8 +87,10 @@ mod tests {
 
     #[test]
     fn single_byte_vector() {
-        // One-byte CRC-32C of 0xFE is 0x0D968558 (cross-checked against
-        // Intel's SSE4.2 `crc32c_hw` routine).
-        assert_eq!(crc32c(&[0xFE]), 0x0D96_8558);
+        // One-byte CRC-32C of 0xFE is 0x0D6B8303. Cross-checked
+        // against an independent reference implementation (reflected
+        // poly 0x82F63B78, init/xor-out 0xFFFFFFFF) and against
+        // Python's `crc32c` package on the host.
+        assert_eq!(crc32c(&[0xFE]), 0x0D6B_8303);
     }
 }

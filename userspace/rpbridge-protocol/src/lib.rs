@@ -20,6 +20,12 @@
 //! CRC-32C computed over `header || payload`. All multi-byte integer
 //! fields are little-endian.
 
+/// Capability-map decoder (CBOR over the SYS subsystem).
+///
+/// Mirrors `firmware/src/cap/capabilities.c` so the host can read
+/// the device's advertised buses, features, and identity without
+/// speaking CBOR directly. Available only with the `cbor` Cargo
+/// feature.
 #[cfg(feature = "cbor")]
 pub mod cap;
 
@@ -406,14 +412,17 @@ mod tests {
         let mut buf = [0u8; HEADER_LEN];
         sample_header().encode(&mut buf);
         buf[3] |= 0b1000_0000;
-        assert!(matches!(Header::parse(&buf), Err(Error::ReservedFlagBits(_))));
+        assert!(matches!(
+            Header::parse(&buf),
+            Err(Error::ReservedFlagBits(_))
+        ));
     }
 
     #[test]
     fn header_rejects_oversize_payload() {
         let mut buf = [0u8; HEADER_LEN];
         let mut h = sample_header();
-        h.payload_len = (MAX_PAYLOAD_LEN + 1) as u32;
+        h.payload_len = u32::try_from(MAX_PAYLOAD_LEN + 1).unwrap();
         h.encode(&mut buf);
         assert!(matches!(Header::parse(&buf), Err(Error::PayloadTooLarge)));
     }
@@ -422,7 +431,7 @@ mod tests {
     fn validate_roundtrip_with_payload() {
         let payload = b"hello, rpbridge";
         let mut h = sample_header();
-        h.payload_len = payload.len() as u32;
+        h.payload_len = u32::try_from(payload.len()).unwrap();
         h.msg_type = MsgType::CmdRequest as u8;
 
         let mut frame = [0u8; HEADER_LEN + 64];
@@ -458,6 +467,9 @@ mod tests {
     #[test]
     fn msg_type_known_values() {
         assert_eq!(MsgType::try_from(0x07).unwrap(), MsgType::Ping);
-        assert!(matches!(MsgType::try_from(0xEE), Err(Error::BadMsgType(0xEE))));
+        assert!(matches!(
+            MsgType::try_from(0xEE),
+            Err(Error::BadMsgType(0xEE))
+        ));
     }
 }

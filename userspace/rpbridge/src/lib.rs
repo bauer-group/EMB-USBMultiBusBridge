@@ -42,14 +42,14 @@ pub enum Error {
 /// Short-hand result alias.
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// RPBridge-specific USB VID/PID placeholder. Replace with the real
+/// `RPBridge`-specific USB VID/PID placeholder. Replace with the real
 /// allocation before the first public release.
 pub const DEFAULT_VID: u16 = 0x1209;
-/// RPBridge-specific USB VID/PID placeholder. Replace with the real
+/// `RPBridge`-specific USB VID/PID placeholder. Replace with the real
 /// allocation before the first public release.
 pub const DEFAULT_PID: u16 = 0xFFFE;
 
-/// Handle to a connected RPBridge device.
+/// Handle to a connected `RPBridge` device.
 pub struct Device {
     // TODO: box a transport trait object once the `nusb` pipe helpers
     //       settle their async API in 0.2.
@@ -57,7 +57,7 @@ pub struct Device {
 }
 
 impl Device {
-    /// Open the first RPBridge device currently plugged in.
+    /// Open the first `RPBridge` device currently plugged in.
     ///
     /// # Errors
     ///
