@@ -102,7 +102,10 @@ configure_file(
 # Sources
 # ──────────────────────────────────────────────────────────────────────────
 
-add_executable(rpbridge
+# Sources that we own and want held to the project's strict warning
+# bar. Listed here once so per-file compile options can be applied
+# below without spelling the list out twice.
+set(RPBRIDGE_OWN_SOURCES
     src/main.c
 
     # RPBP v1 protocol core.
@@ -160,6 +163,8 @@ add_executable(rpbridge
     # core1 scheduler, PIO-based precision RS485 DE.
 )
 
+add_executable(rpbridge ${RPBRIDGE_OWN_SOURCES})
+
 # ──────────────────────────────────────────────────────────────────────────
 # PIO programs: pioasm turns each .pio file into a C header with the
 # program struct, default config, offsets, and instruction array. The
@@ -195,6 +200,13 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/third_party/can2040/src/can2040.c")
         third_party/can2040/src/can2040.c
     )
     target_compile_definitions(rpbridge PRIVATE RPBRIDGE_HAVE_CAN2040=1)
+    # Vendored single-file driver: silence two upstream-style nits
+    # (unused parameter in a debug stub; one shadow inside a CAN-id
+    # variable). We hold our own code to higher standards via
+    # set_source_files_properties on RPBRIDGE_OWN_SOURCES; can2040 is
+    # tracked unmodified upstream and we don't fork it for cosmetics.
+    set_source_files_properties(third_party/can2040/src/can2040.c
+        PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-shadow")
 else()
     message(STATUS
         "can2040 submodule not present — building without CAN support. "
@@ -202,21 +214,30 @@ else()
 endif()
 
 target_compile_options(rpbridge PRIVATE
+    # Baseline warnings — tame enough that pico-sdk + can2040 + tinyusb
+    # (which inherit our PRIVATE flags through INTERFACE source
+    # injection) don't drown the log in upstream nits.
     -Wall
     -Wextra
     -Wshadow
     -Wnull-dereference
     -Wformat=2
-    -Wstrict-prototypes
-    -Wmissing-prototypes
     -Wwrite-strings
-    -Werror=implicit-function-declaration
     -Werror=return-type
     -fno-common
     $<$<CONFIG:Release>:-Os>
     $<$<CONFIG:RelWithDebInfo>:-Os -g>
     $<$<CONFIG:Debug>:-Og -g3>
 )
+
+# Stricter flags applied per-source to RPBRIDGE_OWN_SOURCES only.
+# pico-sdk ships hundreds of static functions without explicit
+# prototypes, calls implicit functions in newlib stubs, etc. — those
+# would generate dozens of warnings if we hoisted these flags onto
+# the target. Per-source scoping keeps the bar high for code we own
+# without forking upstream just to silence noise.
+set_source_files_properties(${RPBRIDGE_OWN_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "-Wstrict-prototypes;-Wmissing-prototypes;-Werror=implicit-function-declaration")
 
 target_link_libraries(rpbridge PRIVATE
     pico_stdlib
