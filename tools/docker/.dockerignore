@@ -1,0 +1,8 @@
+# Build context for tools/docker/ is just the Dockerfile + tiny support
+# files. The actual sources are bind-mounted at run time, never COPYed,
+# so we exclude the world from the build context to keep `docker build`
+# uploads instant.
+
+*
+!builder.Dockerfile
+!README.md
