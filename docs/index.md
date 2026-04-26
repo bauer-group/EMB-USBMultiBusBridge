@@ -1,10 +1,23 @@
 # RPBridge
 
-**USB Multi-Bus Bridge on Raspberry Pi RP2354B.** Open hardware, open
-firmware, open drivers. Exposes I²C, SPI, UART (RS232/RS485/TTL),
-GPIO, PWM, ADC and CAN 2.0B to a Linux host as standard subsystem
-devices — use `i2c-tools`, `libgpiod`, `can-utils`, `spidev_test` and
-friends unmodified.
+!!! warning "Alpha — pre-production"
+    RPBridge is in **alpha**. The firmware feature set is complete and
+    self-tested on both supported boards, but the project still uses
+    placeholder USB VID/PID, the Rust-for-Linux kernel adapters are
+    gated behind `CONFIG_RPBRIDGE_*`, and the udev rule set is not yet
+    final. **Do not deploy on production hosts.** See
+    [`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+    for the live status matrix.
+
+**USB Multi-Bus Bridge on the Raspberry Pi RP2350 family.** Open
+hardware, open firmware, open drivers. Two board variants are
+supported in lockstep — `rpbridge_rp2354b` (Rev-B custom PCB,
+QFN-80, 48 GPIO) and `rpbridge_pico2` (off-the-shelf Raspberry Pi
+Pico 2, QFN-60, 30 GPIO). Both expose the same eleven RPBP
+subsystems to a Linux host as standard subsystem devices: I²C, SPI,
+UART (RS232/RS485/TTL), GPIO, PWM, ADC, CAN 2.0B, WS2812 LED
+strips, DMX-512, 1-Wire and I²S. Use `i2c-tools`, `libgpiod`,
+`can-utils`, `spidev_test`, IIO and friends unmodified.
 
 ## Start here
 
@@ -51,12 +64,13 @@ friends unmodified.
 
 | Path                   | Purpose                                                     |
 |------------------------|-------------------------------------------------------------|
-| `firmware/`            | RP2354B firmware (C + pico-sdk, can2040 for CAN).           |
+| `firmware/`            | RP2350-family firmware (C + pico-sdk 2.2.0, can2040 for CAN). Multi-board build via `RPBRIDGE_BOARD=rpbridge_rp2354b\|rpbridge_pico2`. |
+| `firmware/COVERAGE.md` | Live, consumer-facing status matrix — start here to see what is shipped vs. open. |
 | `driver/`              | Rust-for-Linux kernel module, DKMS-packaged.                |
 | `userspace/`           | Rust workspace: protocol lib, client lib, `rpbridge-ctl`, bench. |
 | `docs/`                | This documentation site (mkdocs-material).                  |
 | `dts/overlays/`        | Device-tree overlays for auto-provisioning onboard sensors. |
-| `hardware/`            | KiCad 9 design files (rev-B, 2-layer, 80 × 55 mm).          |
+| `hardware/`            | KiCad 9 design files (Rev-B, 2-layer, 80 × 55 mm).          |
 | `tests/golden/`        | Golden RPBP vectors shared across every implementation.     |
 
 ## Design principles
@@ -75,15 +89,21 @@ friends unmodified.
 
 ## Status
 
-| Component           | Maturity      |
-|---------------------|---------------|
-| Hardware (rev-B)    | Draft         |
-| Firmware            | Scaffold      |
-| Linux driver (Rust) | Scaffold      |
-| Userspace CLI (Rust)| Scaffold      |
-| Documentation       | In progress   |
-| CI/CD               | Scaffold      |
+| Component                  | Maturity              |
+|----------------------------|-----------------------|
+| Hardware — Rev-B PCB       | Draft (bring-up done) |
+| Hardware — Pico 2 carrier  | Working               |
+| Firmware (both boards)     | Feature complete (alpha) |
+| Linux driver (Rust)        | Wire layer feature complete; subsystem adapters in progress |
+| Userspace CLI (Rust)       | Working               |
+| Documentation              | Synced with firmware  |
+| CI/CD                      | Both boards green     |
 
-See [CHANGELOG](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/CHANGELOG.md)
-for the running release log and [decision records](adr/index.md) for
-why the project shaped up the way it did.
+The single source of truth for shipped functionality is
+[`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md).
+For per-pin capability — including which silicon mux slots reach
+which subsystem on each board — see the
+[pin capability matrix](hardware/pin-matrix.md). The
+[CHANGELOG](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/CHANGELOG.md)
+tracks the running release log; [decision records](adr/index.md)
+explain why the project shaped up the way it did.

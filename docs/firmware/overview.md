@@ -1,9 +1,22 @@
 # Firmware — overview
 
-The RPBridge firmware runs on the RP2354B's two Cortex-M33 cores.
-The current build implements the full RPBP v1 protocol on the
-control pipe; bus-specific subsystems (I²C, SPI, GPIO, PWM, ADC,
-CAN) land in subsequent milestones.
+The RPBridge firmware runs on the dual Cortex-M33 cores of the
+RP2350 family and ships in two board variants from a single source
+tree: the **Rev-B custom PCB (`rpbridge_rp2354b`, QFN-80, 48 GPIO)**
+and the **off-the-shelf Raspberry Pi Pico 2
+(`rpbridge_pico2`, QFN-60, 30 GPIO)**. Both targets implement the
+complete RPBP v1 control surface and all eleven subsystems
+(I²C, SPI, UART, GPIO, PWM, ADC, CAN, WS2812 LED, DMX-512,
+1-Wire, I²S); the per-board feature flags in the CBOR capability
+map are the only thing the host needs to consult to know which
+pins exist.
+
+> **Where to look first:** the live coverage matrix lives in
+> [`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+> (per-subsystem ship status, evidence links, both-board green/red
+> per opcode). Per-pin capability — including which silicon mux
+> slots reach which peripheral instance — is documented in the
+> [pin capability matrix](../hardware/pin-matrix.md).
 
 ## Responsibility split (target architecture)
 
@@ -21,25 +34,29 @@ scheduler as they land.
 
 | Path                                  | Purpose                                                |
 |---------------------------------------|--------------------------------------------------------|
-| `src/rpbp/rpbp.h`                     | Wire constants, enums, header struct, flag helpers.    |
+| `src/rpbp/rpbp.h`                     | Wire constants, enums, header struct, flag helpers, dynamic stream-channel table. |
 | `src/rpbp/rpbp_framing.{c,h}`         | Header encode/parse, frame build/validate.             |
 | `src/rpbp/rpbp_crc32c.{c,h}`          | Castagnoli CRC-32C lookup table.                       |
 | `src/rpbp/rpbp_cbor.{c,h}`            | Minimal RFC 8949 writer.                               |
-| `src/rpbp/rpbp_dispatch.{c,h}`        | msg_type router + reply builders.                      |
+| `src/rpbp/rpbp_dispatch.{c,h}`        | msg_type router + reply builders + STREAM_OPEN / STREAM_CREDIT / STREAM_DATA wiring. |
 | `src/rpbp/rpbp_transport.{c,h}`       | TinyUSB vendor-class glue, RX state machine, TX.       |
-| `src/capabilities/capabilities.{c,h}` | Capability + identity map emitters.                    |
-| `src/commands/cmd_sys.{c,h}`          | SYS subsystem handlers (subsys = 0).                   |
-| `src/commands/cmd_uart.{c,h}`         | UART subsystem handlers (subsys = 6) — SET_PHY / GET_PHY. |
-| `src/commands/cmd_i2c.{c,h}`          | RPBP I²C subsystem (PROBE / XFER / SCAN / SET_FREQ / GET_FREQ). |
-| `src/commands/cmd_spi.{c,h}`          | RPBP SPI subsystem (XFER / SET_MODE / SET_FREQ / GET_FREQ / CS_ASSERT / CS_RELEASE). |
-| `src/commands/cmd_gpio.{c,h}`         | RPBP GPIO subsystem (LIST / CONFIGURE / SET / GET / SET_MASK / GET_MASK). |
-| `src/commands/cmd_pwm.{c,h}`          | RPBP PWM subsystem (CONFIGURE / SET_DUTY / START / STOP / GET_STATE). |
-| `src/commands/cmd_adc.{c,h}`          | RPBP ADC subsystem (READ / READ_MANY / GET_REF / TEMP_READ). |
+| `src/capabilities/capabilities.{c,h}` | Capability + identity map emitters (per-board feature flags). |
+| `src/commands/cmd_sys.{c,h}`          | SYS subsystem (subsys = 0) — incl. UART_CLAIM/RELEASE arbiter and SELFTEST loopback battery. |
+| `src/commands/cmd_uart.{c,h}`         | UART subsystem (subsys = 6) — SET_PHY / GET_PHY.       |
+| `src/commands/cmd_i2c.{c,h}`          | I²C subsystem (PROBE / XFER / SCAN / SET_FREQ / GET_FREQ). |
+| `src/commands/cmd_spi.{c,h}`          | SPI subsystem (XFER / SET_MODE / SET_FREQ / GET_FREQ / CS_ASSERT / CS_RELEASE). |
+| `src/commands/cmd_gpio.{c,h}`         | GPIO subsystem (LIST / CONFIGURE / SET / GET / SET_MASK / GET_MASK). |
+| `src/commands/cmd_pwm.{c,h}`          | PWM subsystem (CONFIGURE / SET_DUTY / START / STOP / GET_STATE). |
+| `src/commands/cmd_adc.{c,h}`          | ADC subsystem (READ / READ_MANY / GET_REF / TEMP_READ / STREAM_OPEN). |
+| `src/commands/cmd_led.{c,h}`          | LED (WS2812) subsystem — strip configure + frame push via PIO. |
+| `src/commands/cmd_dmx.{c,h}`          | DMX-512 subsystem — universe push, BREAK/MAB timing via PIO. |
+| `src/commands/cmd_onewire.{c,h}`      | 1-Wire subsystem — RESET / WRITE / READ / SEARCH driven by PIO timing. |
+| `src/commands/cmd_i2s.{c,h}`          | I²S subsystem — TX/RX configure, sample-rate selection, DMA pump. |
 | `src/usb/tusb_config.h`               | TinyUSB build-time configuration.                      |
 | `src/usb/usb_descriptors.c`           | Composite device + BOS + vendor control-transfer.      |
 | `src/usb/ms_os_20.{c,h}`              | BOS platform capability + MS OS 2.0 descriptor set.    |
-| `src/usb/cdc_glue.{c,h}`              | CDC-ACM ↔ UART byte shuttle + TinyUSB class callbacks. |
-| `src/peripherals/pin_broker.{c,h}`    | 48-slot GPIO ownership ledger; every subsystem claims its pins here during init. |
+| `src/usb/cdc_glue.{c,h}`              | CDC-ACM ↔ UART byte shuttle, per-PHY arbiter, TinyUSB class callbacks. |
+| `src/peripherals/pin_broker.{c,h}`    | 48-slot GPIO ownership ledger; every subsystem claims its pins here during init. Idempotent same-owner re-claim. |
 | `src/peripherals/uart_hw.{c,h}`       | IRQ-driven HW UART wrapper + optional software RS485 DE. |
 | `src/peripherals/uart_pio.{c,h}`      | PIO-backed 8N1 UART (PIO1, two SMs) with software rings. |
 | `src/peripherals/uart_phy.{c,h}`      | UART0 phy-bank selector (OFF / TTL / RS232 / RS485).   |
@@ -47,11 +64,17 @@ scheduler as they land.
 | `src/peripherals/spi.{c,h}`           | PL022 SPI wrapper, dual-instance, software CS.         |
 | `src/peripherals/gpio.{c,h}`          | User-GPIO subsystem with pin whitelist + 64-bit atomic mask ops. |
 | `src/peripherals/pwm.{c,h}`           | 12-slice PWM wrapper, shared between user subsystem and status LED. |
-| `src/peripherals/adc.{c,h}`           | RP2350 SAR-ADC wrapper (4 user channels + temperature sensor). |
-| `src/peripherals/can.{c,h}`           | CAN 2.0B via vendored can2040 on PIO0 (GP20/21).       |
+| `src/peripherals/adc.{c,h}`           | RP2350 SAR-ADC wrapper + Core-1 IIO streamer (drift-free sampling). |
+| `src/peripherals/can.{c,h}`           | CAN 2.0B via vendored can2040 on PIO0.                 |
+| `src/peripherals/led_ws2812.{c,h}`    | WS2812 strip driver (PIO program + DMA frame push).    |
+| `src/peripherals/dmx.{c,h}`           | DMX-512 driver (PIO BREAK/MAB timing + RS485 DE).      |
+| `src/peripherals/onewire.{c,h}`       | 1-Wire master via PIO bit-banging.                     |
+| `src/peripherals/i2s.{c,h}`           | I²S TX/RX via PIO + DMA.                               |
 | `src/usb/gs_usb_glue.{c,h}`           | SocketCAN-compatible gs_usb protocol on vendor interface 1. |
 | `src/pio/uart_pio_tx.pio`             | PIO 8N1 TX program (8 cycles / bit).                   |
 | `src/pio/uart_pio_rx.pio`             | PIO 8N1 RX program with framing-error IRQ.             |
+| `boards/rpbridge_rp2354b.h`           | Board header — 48 GPIO, defines `RPBRIDGE_HAVE_*` feature flags for the Rev-B PCB. |
+| `boards/rpbridge_pico2.h`             | Board header — 30 GPIO, narrows feature flags for the off-the-shelf Pico 2 (ADR-0008). |
 
 ## System infrastructure
 
@@ -72,22 +95,25 @@ scheduler as they land.
 - **PING / PONG / TIME_SYNC** — with `t2` capture and `t3` in the
   response header.
 - **RESET_CHANNEL** — clears device-local seq counters.
-- **CMD_REQUEST → SYS subsystem** — all 9 opcodes:
-  - `GET_CAPABILITIES` (CBOR wrapper),
-  - `ECHO`,
-  - `REBOOT_BOOTSEL` (uses `reset_usb_boot()` from the ROM),
-  - `UPTIME` (u64 since boot),
-  - `GET_VBUS_MV` (scaffold: constant 5000 mV until the ADC lands),
-  - `SET_LED` (override the default heartbeat),
-  - `SELFTEST` (no tests registered yet — empty pass_mask),
-  - `GET_IDENTITY` (compact CBOR identity map),
-  - `RESET` (soft-reboot via `watchdog_reboot()`).
+- **All 11 RPBP subsystems** — SYS, I²C, SPI, GPIO, PWM, ADC, UART,
+  LED (WS2812), DMX-512, 1-Wire, I²S; CAN goes through the
+  vendor-class `gs_usb` glue (mainline driver, no RPBP wrapper
+  needed). See [`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+  for the per-opcode evidence matrix on both boards.
+- **SYS subsystem** — full opcode set incl. `GET_CAPABILITIES`,
+  `ECHO`, `REBOOT_BOOTSEL`, `UPTIME`, `GET_VBUS_MV` (real ADC),
+  `SET_LED`, `SELFTEST` (10 on-device loopback tests),
+  `GET_IDENTITY`, `RESET`, plus the `UART_CLAIM` / `UART_RELEASE`
+  arbiter that prevents CDC-ACM and the RPBP UART subsystem from
+  fighting over the same PHY.
+- **Streaming channels** — dynamic `STREAM_OPEN` / `STREAM_DATA`
+  / `STREAM_CREDIT` plumbing, currently driving the ADC IIO pump
+  on Core 1.
 - **Error frames** — ERROR with `(status, orig_channel, orig_seq,
   optional reason)` on any bad frame or unsupported request.
 - **Stats counters** — `rpbp_transport_stats()` reports
   `rx_frames_ok`, `rx_frames_bad`, `rx_resyncs`, `tx_frames`,
-  `tx_drops`. Exposed to the host once SELFTEST opcode payloads
-  include counters (pending).
+  `tx_drops`; exposed to the host through the `SELFTEST` payload.
 
 ## RX state machine
 
@@ -139,34 +165,46 @@ implementations of the wire format stay in lockstep.
 ## Capability map
 
 The firmware emits a CBOR capability map on every
-`CMD_REQUEST{GET_CAPABILITIES}`. For the v1 scaffold the map
-reports:
+`CMD_REQUEST{GET_CAPABILITIES}`. The map self-describes everything
+the host needs to bind drivers — the host never has to maintain a
+firmware-version matrix. Top-level keys:
 
 - `proto` = `[1, 0, 0]`
 - `fw` = git-describe version
-- `board` = `"rpbridge-rev-B"`
+- `board` = `"rpbridge-rev-B"` or `"rpbridge-pico2"` (build-time)
 - `serial` = 8-byte flash unique ID
 - `mtu` = `{ "out": 64, "in": 64 }`
 - `max_msg_len` = 4096
 - `max_streams` = 16
 - `max_reassembled` = 65536
-- `features` = `["cbor", "credit-fc", "events", "time-sync", "crc32c.sw", "firmware-update"]`
-- `buses` = `{}` (populated as subsystem handlers come online)
+- `features` = `["cbor", "credit-fc", "events", "time-sync", "crc32c.sw", "firmware-update", "selftest", "stream-channels"]`
+- `buses` = per-subsystem instance map (I²C bus count, SPI bus
+  count, ADC channel count, LED strip count, …) gated by the
+  per-board `RPBRIDGE_HAVE_*` flags
 - `ota` = `{ "mechanism": "uf2_bootsel", "signature": "minisign-ed25519" }`
 
+Reserved for the upcoming M11 surface: `pin.flex` (atomic
+pin-function reassignment) and `counter.pio` (PIO2-driven
+high-speed edge counter). See
+[ADR-0009](../adr/0009-pin-function-flexibility.md).
+
 Full schema: [`../protocol/capabilities.md`](../protocol/capabilities.md).
+Per-pin capability for both boards is documented in the
+[pin capability matrix](../hardware/pin-matrix.md).
 
 ## What is still open
 
-See [`firmware/TODO.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/TODO.md)
-for the full milestone list. The short version:
+The firmware feature set is complete; the remaining gates are
+operational, not functional. See
+[`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+for the live status, and
+[`firmware/TODO.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/TODO.md)
+for the developer working backlog. Open pre-production gates:
 
-- M2 — I²C subsystem (pin broker + HW-I²C + `cmd_i2c`)
-- M3 — SPI / GPIO / PWM / ADC
-- M4 — CDC-to-UART bridge + RS485 DE applet
-- M5 — CAN via can2040 + gs_usb glue
-- M6 — Core 1 + streaming channels
-- M7 — MS OS 2.0 descriptors for Windows
-- M8 — Golden vector corpus + on-device self-test
-
-The protocol layer (M1) is **complete** as of this document.
+- **VID/PID** — currently a pid.codes development PID; needs the
+  final BAUER GROUP USB-IF allocation before mass production.
+- **`bcdDevice`** — needs to track release tags via build-time
+  injection.
+- **udev rules** — final naming + group ownership policy.
+- **M11** — atomic pin reassignment + high-speed counter
+  (PIN / COUNTER subsystems, see ADR-0009).
