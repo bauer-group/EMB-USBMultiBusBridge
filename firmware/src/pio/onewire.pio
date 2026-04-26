@@ -41,12 +41,19 @@
 ;     output the level is always LOW.
 ;   * Long delays (480 µs, 410 µs, 64 µs, 55 µs) exceed the 31-cycle
 ;     cap on a single delay slot, so they are emitted as `nop [31]`
-;     loops counted by the X register.
+;     loops counted by the X / Y registers.
+;   * Autopull is enabled with threshold = 2: each `out` consumes the
+;     next bit, and after the second `out` the OSR is automatically
+;     refilled from the TX FIFO (the remaining 30 bits per host word
+;     are discarded). This saves an explicit `pull` and keeps the
+;     program inside the 32-instruction PIO budget.
+;   * The trailing `jmp entry` after the WRITE_0 path is omitted on
+;     purpose: PIO `WRAP` defaults to the last instruction wrapping
+;     to the program start, which IS `entry:` (offset 0).
 
 .program rpbridge_onewire
 
 PUBLIC entry:
-    pull                      ; wait for command word
     out x, 1                  ; bit value (1 = read/write1, 0 = write0)
     out y, 1                  ; mode    (1 = reset slot, 0 = bit slot)
 
@@ -54,7 +61,7 @@ PUBLIC entry:
     ; ── Reset slot ──────────────────────────────────────────────────
 reset:
     set pindirs, 1            ; drive line LOW
-    set y, 23                 ; 24 × 20 µs = 480 µs
+    set y, 23                 ; 24 × 21 ≈ 504 µs (≥ 480 µs spec min)
 reset_low:
     nop [19]
     jmp y-- reset_low         ; (1 + 19 = 20 cyc per iteration)
@@ -65,7 +72,7 @@ reset_release:
     jmp y-- reset_release
     in pins, 1                ; sample bus: 0 = presence, 1 = nothing
     push                      ; commit
-    set y, 19                 ; recovery: 20 × 20 = 400 µs (slot ≈ 1 ms)
+    set y, 19                 ; recovery: 20 × 21 ≈ 420 µs (≥ 410 µs)
 reset_recover:
     nop [19]
     jmp y-- reset_recover
@@ -78,7 +85,7 @@ bit_op:
     set pindirs, 0 [8]        ; release; sample after 9 µs total
     in pins, 1                ; sample (bit-read result)
     push
-    set y, 5                  ; recovery: 6 × 10 = 60 µs (slot ≈ 75 µs)
+    set y, 5                  ; recovery: 6 × 11 = 66 µs (slot ≈ 75 µs)
 write1_recover:
     nop [9]
     jmp y-- write1_recover
@@ -86,15 +93,13 @@ write1_recover:
 
 write_zero:
     ; Already 6 µs LOW from the entry instruction; need 54 more µs LOW.
-    set y, 5                  ; 6 × 9 µs = 54 µs
+    set y, 5                  ; 6 × 10 µs = 60 µs (incl. trailing jmp)
 write0_low:
     nop [8]
     jmp y-- write0_low
     set pindirs, 0 [9]        ; release for 10 µs (slot total = 70 µs)
-    set x, 0                  ; result placeholder
-    in x, 1
-    push
-    jmp entry
+    mov isr, null             ; placeholder result = 0 (host expects a push)
+    push                      ; ← last instruction; PC wraps to entry
 
 % c-sdk {
 #include "hardware/clocks.h"
@@ -110,7 +115,13 @@ static inline void rpbridge_onewire_program_init(PIO pio, uint sm,
     sm_config_set_jmp_pin (&c, pin);
 
     sm_config_set_in_shift (&c, false /*shift_left*/, false /*autopush*/, 32);
-    sm_config_set_out_shift(&c, true  /*shift_right*/, false /*autopull*/, 32);
+    /* Autopull threshold = 2: after the program shifts out the two
+     * payload bits (bit-value, mode) the OSR is automatically
+     * refilled from the TX FIFO, dropping the unused upper 30 bits
+     * of each command word. This trims the explicit `pull` from the
+     * PIO program — it would otherwise overflow the 32-instruction
+     * budget. */
+    sm_config_set_out_shift(&c, true  /*shift_right*/, true  /*autopull*/, 2);
 
     /* SM clock = 1 MHz so each cycle = 1 µs. */
     float div = (float)clock_get_hz(clk_sys) / 1000000.0f;
