@@ -33,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/usb.h>
 
+#include "auxbus.h"
 #include "cap.h"
 #include "rpbp.h"
 #include "rpbridge.h"
@@ -67,6 +68,7 @@ static void rpbridge_dev_release(struct kref *kref)
 	 */
 	mutex_destroy(&dev->transport_lock);
 	mutex_destroy(&dev->seq_lock);
+	mutex_destroy(&dev->aux_lock);
 
 	kfree(dev->caps);
 	dev->caps = NULL;
@@ -150,6 +152,8 @@ static int rpbridge_probe(struct usb_interface *intf,
 	kref_init(&dev->kref);
 	mutex_init(&dev->transport_lock);
 	mutex_init(&dev->seq_lock);
+	mutex_init(&dev->aux_lock);
+	INIT_LIST_HEAD(&dev->aux_children);
 
 	dev->udev = usb_get_dev(interface_to_usbdev(intf));
 	if (!dev->udev) {
@@ -200,13 +204,13 @@ static int rpbridge_probe(struct usb_interface *intf,
 		 dev->caps->proto[0], dev->caps->proto[1], dev->caps->proto[2],
 		 dev->caps->bus_count);
 
-	/*
-	 * TODO(rpbridge): spawn_aux_children() per advertised subsystem
-	 * lands in the next commit. Until then the driver attaches
-	 * fully but exposes no userspace device — the hello + caps
-	 * path is what userland tooling can already exercise via
-	 * upcoming ioctls.
-	 */
+	ret = rpbridge_spawn_aux_children(dev);
+	if (ret) {
+		dev_err(&intf->dev,
+			"rpbridge: aux child spawn failed: %d\n", ret);
+		goto err_clear_intfdata;
+	}
+
 	return 0;
 
 err_clear_intfdata:
@@ -224,6 +228,7 @@ err_put_udev:
 err_free_locks:
 	mutex_destroy(&dev->transport_lock);
 	mutex_destroy(&dev->seq_lock);
+	mutex_destroy(&dev->aux_lock);
 	kfree(dev);
 	return ret;
 }
@@ -245,11 +250,13 @@ static void rpbridge_disconnect(struct usb_interface *intf)
 	dev_info(&intf->dev, "rpbridge: disconnected\n");
 
 	/*
-	 * TODO(rpbridge): unregister aux children here once they
-	 * exist. Each child's release fn calls rpbridge_dev_put()
-	 * which will eventually drop the last reference; until then
-	 * the kref keeps the state alive across pending callbacks.
+	 * Unregister aux children FIRST. Each child's release fn
+	 * calls rpbridge_dev_put() — which only frees state when
+	 * the last reference drops. Children hold a kref each via
+	 * spawn_one(), so the parent kref drops below cannot race
+	 * with a still-active subsystem callback.
 	 */
+	rpbridge_unregister_aux_children(dev);
 
 	rpbridge_dev_put(dev);
 }
@@ -268,7 +275,47 @@ static struct usb_driver rpbridge_driver = {
 	 */
 };
 
-module_usb_driver(rpbridge_driver);
+/*
+ * Subsystem auxiliary_drivers register on module-load and unregister
+ * on module-exit. Registration order matters only insofar as cleanup
+ * runs in reverse: if rpbridge_iio_register() fails we must already
+ * have cleaned up gpio/i2c/spi/pwm.
+ */
+static int __init rpbridge_module_init(void)
+{
+	int ret;
+
+	ret = rpbridge_gpio_register();   if (ret) goto err;
+	ret = rpbridge_i2c_register();    if (ret) goto err_gpio;
+	ret = rpbridge_spi_register();    if (ret) goto err_i2c;
+	ret = rpbridge_pwm_register();    if (ret) goto err_spi;
+	ret = rpbridge_iio_register();    if (ret) goto err_pwm;
+	ret = usb_register(&rpbridge_driver);
+	if (ret)
+		goto err_iio;
+	return 0;
+
+err_iio:  rpbridge_iio_unregister();
+err_pwm:  rpbridge_pwm_unregister();
+err_spi:  rpbridge_spi_unregister();
+err_i2c:  rpbridge_i2c_unregister();
+err_gpio: rpbridge_gpio_unregister();
+err:
+	return ret;
+}
+
+static void __exit rpbridge_module_exit(void)
+{
+	usb_deregister(&rpbridge_driver);
+	rpbridge_iio_unregister();
+	rpbridge_pwm_unregister();
+	rpbridge_spi_unregister();
+	rpbridge_i2c_unregister();
+	rpbridge_gpio_unregister();
+}
+
+module_init(rpbridge_module_init);
+module_exit(rpbridge_module_exit);
 
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);

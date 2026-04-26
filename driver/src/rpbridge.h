@@ -16,6 +16,7 @@
 #include <linux/usb.h>
 
 struct rpbp_caps;     /* forward — defined in cap.h */
+struct aux_track;     /* forward — defined in aux.c, never dereferenced here */
 
 /**
  * struct rpbridge_dev - per-USB-interface state.
@@ -60,6 +61,14 @@ struct rpbridge_dev {
 	u16                 next_seq;
 
 	struct rpbp_caps   *caps;
+
+	/* Auxiliary-bus children spawned for each advertised subsystem.
+	 * Protected by aux_lock; list_head entries point at struct
+	 * aux_track from aux.c. The mutex is separate from
+	 * transport_lock so a stray late aux callback inspecting the
+	 * list can't deadlock against an in-flight bulk transfer. */
+	struct mutex        aux_lock;
+	struct list_head    aux_children;
 };
 
 /* Refcount accessors. Defined in main.c so the release callback
