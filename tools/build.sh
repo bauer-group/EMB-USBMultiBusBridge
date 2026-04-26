@@ -307,8 +307,8 @@ fi
 
 # ─── inside the container (or RPBRIDGE_NO_DOCKER=1) ───────────────────────
 case "$cmd" in
-    firmware)  build_firmware "$@"  ;;
-    driver)    build_driver         ;;
+    firmware)  build_firmware  "$@" ;;
+    driver)    build_driver    "$@" ;;
     userspace) build_userspace "$@" ;;
     test)      test_userspace       ;;
     all)
