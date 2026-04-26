@@ -14,7 +14,7 @@ Release:        1%{?dist}
 Summary:        RPBridge USB multi-bus bridge Rust kernel driver (DKMS)
 
 License:        GPL-2.0
-URL:            https://github.com/bauer-group/USB-Multi-Bus-Bridge
+URL:            https://github.com/bauer-group/EMB-USBMultiBusBridge
 Source0:        %{name}-%{version}.tar.gz
 
 BuildArch:      noarch
@@ -67,5 +67,5 @@ fi
 %config(noreplace) %{_sysconfdir}/modprobe.d/rpbridge.conf
 
 %changelog
-* Wed Apr 22 2026 BAUER GROUP <kb@de.bauer-group.com> - 0.1.0-1
+* Wed Apr 22 2026 BAUER GROUP <karl.bauer@bauer-group.com> - 0.1.0-1
 - Initial packaging of the rpbridge Rust kernel driver as DKMS source.

@@ -9,7 +9,7 @@ components:
 - Linux driver
 - Userspace Rust crates
 
-The CI pipeline at [`.github/workflows/release.yml`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/.github/workflows/release.yml)
+The CI pipeline at [`.github/workflows/release.yml`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/.github/workflows/release.yml)
 runs on tag push, produces the artefacts listed below, and attaches
 them to the GitHub Release.
 
@@ -37,7 +37,7 @@ sha256sum -c CHECKSUMS.txt
 ```
 
 The public key `rpbridge.pub` is published here and in
-[`SECURITY.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/SECURITY.md)
+[`SECURITY.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/SECURITY.md)
 at the first tagged release.
 
 ## Version compatibility

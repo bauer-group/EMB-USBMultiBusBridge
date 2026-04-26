@@ -92,6 +92,6 @@ static struct kunit_suite rpbridge_test_suite = {
 
 kunit_test_suite(rpbridge_test_suite);
 
-MODULE_AUTHOR("BAUER GROUP <kb@de.bauer-group.com>");
+MODULE_AUTHOR("BAUER GROUP <karl.bauer@bauer-group.com>");
 MODULE_DESCRIPTION("KUnit tests for rpbridge (CRC32C + golden vectors)");
 MODULE_LICENSE("GPL v2");

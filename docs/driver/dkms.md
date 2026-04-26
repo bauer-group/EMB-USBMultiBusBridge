@@ -7,12 +7,12 @@ intervention.
 
 Source layout for packaging:
 
-- [`driver/dkms.conf.in`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/driver/dkms.conf.in)
+- [`driver/dkms.conf.in`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/dkms.conf.in)
   — DKMS recipe template. The `@VERSION@` token is filled in by the
   packaging step.
-- [`driver/packaging/debian/`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/driver/packaging/debian)
+- [`driver/packaging/debian/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/driver/packaging/debian)
   — `debhelper` recipe. Builds `rpbridge-dkms_<ver>_all.deb`.
-- [`driver/packaging/rpm/rpbridge.spec`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/driver/packaging/rpm/rpbridge.spec)
+- [`driver/packaging/rpm/rpbridge.spec`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/packaging/rpm/rpbridge.spec)
   — RPM spec, targets Fedora ≥ 41 and Rocky/RHEL ≥ 9.
 
 CI pipelines build both formats on tag push

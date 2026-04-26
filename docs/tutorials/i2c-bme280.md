@@ -54,5 +54,5 @@ Pipe into Grafana's IIO plugin for a live dashboard.
 If the RPBridge dongle has the BME280 fixed on its own PCB (not a
 pluggable Qwiic accessory), the firmware can ship a pre-baked DT
 overlay that the kernel driver applies at bind time — the
-`new_device` step disappears. See [`dts/overlays/`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/dts/overlays)
+`new_device` step disappears. See [`dts/overlays/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/dts/overlays)
 for examples.

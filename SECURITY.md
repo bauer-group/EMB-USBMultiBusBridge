@@ -21,7 +21,7 @@ bus-powered developer tool. See the threat model in
 
 **Please do not open public issues for security-sensitive bugs.**
 
-Email: `security@bauer-group.com` (preferred) or `kb@de.bauer-group.com`
+Email: `security@bauer-group.com` (preferred) or `karl.bauer@bauer-group.com`
 direct.
 
 Optional: encrypt with the maintainer's age/PGP key published at
@@ -95,5 +95,5 @@ surface of a TLS stack on a Cortex-M33 is not justified.
 | Channel           | Address                                        |
 |-------------------|------------------------------------------------|
 | Security (PGP)    | `security@bauer-group.com`                     |
-| Maintainer direct | `kb@de.bauer-group.com`                        |
+| Maintainer direct | `karl.bauer@bauer-group.com`                        |
 | GitHub advisory   | Use the *Security* tab on the repository page. |

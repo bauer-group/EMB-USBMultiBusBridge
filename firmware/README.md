@@ -34,7 +34,7 @@ revisions.
 Fresh clone:
 
 ```sh
-git clone --recurse-submodules https://github.com/bauer-group/USB-Multi-Bus-Bridge.git
+git clone --recurse-submodules https://github.com/bauer-group/EMB-USBMultiBusBridge.git
 cd USB-Multi-Bus-Bridge
 ```
 

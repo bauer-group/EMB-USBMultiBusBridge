@@ -1,14 +1,14 @@
 Source: rpbridge-dkms
 Section: kernel
 Priority: optional
-Maintainer: BAUER GROUP <kb@de.bauer-group.com>
+Maintainer: BAUER GROUP <karl.bauer@bauer-group.com>
 Build-Depends: debhelper-compat (= 13),
                dh-dkms,
                dkms (>= 3.0)
 Standards-Version: 4.7.0
-Homepage: https://github.com/bauer-group/USB-Multi-Bus-Bridge
-Vcs-Git: https://github.com/bauer-group/USB-Multi-Bus-Bridge.git
-Vcs-Browser: https://github.com/bauer-group/USB-Multi-Bus-Bridge
+Homepage: https://github.com/bauer-group/EMB-USBMultiBusBridge
+Vcs-Git: https://github.com/bauer-group/EMB-USBMultiBusBridge.git
+Vcs-Browser: https://github.com/bauer-group/EMB-USBMultiBusBridge
 Rules-Requires-Root: no
 
 Package: rpbridge-dkms

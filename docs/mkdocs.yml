@@ -3,8 +3,8 @@ site_description: Documentation for the RPBridge firmware, Linux driver, and use
 site_author:      BAUER GROUP
 site_url:         https://rpbridge.org/
 
-repo_name:        bauer-group/USB-Multi-Bus-Bridge
-repo_url:         https://github.com/bauer-group/USB-Multi-Bus-Bridge
+repo_name:        bauer-group/EMB-USBMultiBusBridge
+repo_url:         https://github.com/bauer-group/EMB-USBMultiBusBridge
 edit_uri:         edit/main/docs/
 
 copyright:        Copyright &copy; 2026 BAUER GROUP. Content licensed CC-BY-4.0.
@@ -83,7 +83,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/bauer-group/USB-Multi-Bus-Bridge
+      link: https://github.com/bauer-group/EMB-USBMultiBusBridge
     - icon: fontawesome/solid/globe
       link: https://rpbridge.org
 

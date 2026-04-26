@@ -42,7 +42,7 @@
 /* ───── Module metadata ──────────────────────────────────────────── */
 
 #define DRIVER_NAME    "rpbridge"
-#define DRIVER_AUTHOR  "BAUER GROUP <kb@de.bauer-group.com>"
+#define DRIVER_AUTHOR  "BAUER GROUP <karl.bauer@bauer-group.com>"
 #define DRIVER_DESC    "RPBridge USB multi-bus bridge — RPBP v1 transport"
 
 static const struct usb_device_id rpbridge_id_table[] = {

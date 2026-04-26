@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: rpbridge
-Upstream-Contact: BAUER GROUP <kb@de.bauer-group.com>
-Source: https://github.com/bauer-group/USB-Multi-Bus-Bridge
+Upstream-Contact: BAUER GROUP <karl.bauer@bauer-group.com>
+Source: https://github.com/bauer-group/EMB-USBMultiBusBridge
 
 Files: *
 Copyright: 2026 BAUER GROUP

@@ -102,5 +102,5 @@ Three test ladders run in CI:
 3. **umockdev replay** of recorded USB sessions — covers probe /
    disconnect / suspend / resume paths without real hardware.
 
-See [`driver/README.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/driver/README.md)
+See [`driver/README.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/README.md)
 for the source-tree layout and the current TODO list.

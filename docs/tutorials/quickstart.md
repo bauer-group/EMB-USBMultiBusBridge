@@ -6,7 +6,7 @@ kernel (≥ 6.13).
 ## 1. Clone with submodules
 
 ```sh
-git clone --recurse-submodules https://github.com/bauer-group/USB-Multi-Bus-Bridge.git
+git clone --recurse-submodules https://github.com/bauer-group/EMB-USBMultiBusBridge.git
 cd USB-Multi-Bus-Bridge
 ```
 
@@ -92,7 +92,7 @@ candump can0
 
 **`modprobe: ERROR: could not insert 'rpbridge': Invalid module format`**
 — your kernel does not have `CONFIG_RUST=y`. Upgrade the kernel or
-switch distributions; see [`driver/kernel-baseline/SUPPORT.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/driver/kernel-baseline/SUPPORT.md).
+switch distributions; see [`driver/kernel-baseline/SUPPORT.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/kernel-baseline/SUPPORT.md).
 
 **`/dev/rpbridge0` is missing after plug-in** — check `dmesg`
 for enumeration errors, run `lsusb` and confirm a device with VID

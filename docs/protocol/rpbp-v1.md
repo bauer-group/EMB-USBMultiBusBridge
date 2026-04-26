@@ -6,7 +6,7 @@ resolved in favour of this document.
 
 This specification is normative: firmware, kernel driver and userspace
 implementations MUST conform, and the shared golden-vector corpus under
-[`tests/golden/`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/tests/golden)
+[`tests/golden/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/tests/golden)
 MUST validate every commit that touches wire behaviour.
 
 ---
@@ -394,12 +394,12 @@ whose MAJOR differs from theirs.
 
 ## 17. Reference implementations
 
-- Canonical Rust (userspace): [`userspace/rpbridge-protocol/src/lib.rs`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/userspace/rpbridge-protocol/src/lib.rs)
-- Firmware (C): [`firmware/src/rpbp/`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/firmware/src/rpbp)
-- Kernel (Rust): [`driver/src/rpbp.rs`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/driver/src/rpbp.rs)
+- Canonical Rust (userspace): [`userspace/rpbridge-protocol/src/lib.rs`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/userspace/rpbridge-protocol/src/lib.rs)
+- Firmware (C): [`firmware/src/rpbp/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/firmware/src/rpbp)
+- Kernel (Rust): [`driver/src/rpbp.rs`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/src/rpbp.rs)
 
 All three are exercised by the shared golden-vector corpus under
-[`tests/golden/`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/tests/golden).
+[`tests/golden/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/tests/golden).
 
 ## 18. Related documents
 

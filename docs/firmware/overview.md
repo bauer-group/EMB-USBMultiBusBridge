@@ -12,7 +12,7 @@ map are the only thing the host needs to consult to know which
 pins exist.
 
 > **Where to look first:** the live coverage matrix lives in
-> [`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+> [`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md)
 > (per-subsystem ship status, evidence links, both-board green/red
 > per opcode). Per-pin capability — including which silicon mux
 > slots reach which peripheral instance — is documented in the
@@ -98,7 +98,7 @@ scheduler as they land.
 - **All 11 RPBP subsystems** — SYS, I²C, SPI, GPIO, PWM, ADC, UART,
   LED (WS2812), DMX-512, 1-Wire, I²S; CAN goes through the
   vendor-class `gs_usb` glue (mainline driver, no RPBP wrapper
-  needed). See [`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+  needed). See [`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md)
   for the per-opcode evidence matrix on both boards.
 - **SYS subsystem** — full opcode set incl. `GET_CAPABILITIES`,
   `ECHO`, `REBOOT_BOOTSEL`, `UPTIME`, `GET_VBUS_MV` (real ADC),
@@ -151,7 +151,7 @@ cmake --build firmware/build --parallel
 
 The protocol modules that have no SDK dependency (`rpbp_framing`,
 `rpbp_crc32c`, `rpbp_cbor`) compile on any host toolchain as a
-standalone CMake project under [`firmware/tests/host/`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/firmware/tests/host):
+standalone CMake project under [`firmware/tests/host/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/firmware/tests/host):
 
 ```sh
 cmake -S firmware/tests/host -B firmware/tests/host/build
@@ -196,9 +196,9 @@ Per-pin capability for both boards is documented in the
 
 The firmware feature set is complete; the remaining gates are
 operational, not functional. See
-[`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+[`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md)
 for the live status, and
-[`firmware/TODO.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/TODO.md)
+[`firmware/TODO.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/TODO.md)
 for the developer working backlog. Open pre-production gates:
 
 - **VID/PID** — currently a pid.codes development PID; needs the

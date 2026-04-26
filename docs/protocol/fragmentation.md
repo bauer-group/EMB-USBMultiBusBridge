@@ -139,6 +139,6 @@ of retry is the whole message.
 ## Test vectors
 
 Golden vectors covering fragmentation live at
-[`tests/golden/0004-fragment-first.bin`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/tests/golden)
+[`tests/golden/0004-fragment-first.bin`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/tests/golden)
 through `0007-fragment-*`. See the corpus README for naming conventions
 and expected metadata.

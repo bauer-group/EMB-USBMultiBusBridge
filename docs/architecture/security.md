@@ -1,6 +1,6 @@
 # Security model
 
-The full narrative lives in [`SECURITY.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/SECURITY.md).
+The full narrative lives in [`SECURITY.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/SECURITY.md).
 Key points worth repeating in the docs:
 
 1. **USB transport is not authenticated.** Physical access to the

@@ -5,7 +5,7 @@
 - Linux ≥ 6.13 with `CONFIG_RUST=y`, `CONFIG_AUXILIARY_BUS=y`, and
   the subsystem cores this module uses (`GPIOLIB`, `I2C`, `SPI`,
   `PWM`, `IIO`). See
-  [`kernel-baseline/SUPPORT.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/driver/kernel-baseline/SUPPORT.md).
+  [`kernel-baseline/SUPPORT.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/kernel-baseline/SUPPORT.md).
 - Matching kernel headers (`linux-headers-$(uname -r)` on Debian/
   Ubuntu, `kernel-devel` on Fedora/Rocky).
 - `rustup` with a toolchain roughly matching the kernel's own Rust
@@ -43,7 +43,7 @@ sudo dnf install rpbridge-dkms-0.1.0-1.noarch.rpm
 ## Loading options
 
 Tunables live in
-[`driver/modprobe/rpbridge.conf`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/driver/modprobe/rpbridge.conf):
+[`driver/modprobe/rpbridge.conf`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/modprobe/rpbridge.conf):
 
 | Parameter     | Default | Meaning                                         |
 |---------------|---------|-------------------------------------------------|

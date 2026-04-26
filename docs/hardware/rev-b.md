@@ -25,6 +25,6 @@ BOM totals about **21 € per unit in singles, 11 € in 100s**.
 ## Hardware files
 
 Once the rev-B KiCad project is committed, the schematic, PCB layout
-and fabrication outputs live under [`hardware/`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/tree/main/hardware).
+and fabrication outputs live under [`hardware/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/hardware).
 Current status: source files pending; the draft in `docs/drafts/` is
 sufficient for a fab-ready prototype when ready.

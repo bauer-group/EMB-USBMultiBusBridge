@@ -6,7 +6,7 @@
     placeholder USB VID/PID, the Rust-for-Linux kernel adapters are
     gated behind `CONFIG_RPBRIDGE_*`, and the udev rule set is not yet
     final. **Do not deploy on production hosts.** See
-    [`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md)
+    [`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md)
     for the live status matrix.
 
 **USB Multi-Bus Bridge on the Raspberry Pi RP2350 family.** Open
@@ -100,10 +100,10 @@ strips, DMX-512, 1-Wire and I²S. Use `i2c-tools`, `libgpiod`,
 | CI/CD                      | Both boards green     |
 
 The single source of truth for shipped functionality is
-[`firmware/COVERAGE.md`](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/firmware/COVERAGE.md).
+[`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md).
 For per-pin capability — including which silicon mux slots reach
 which subsystem on each board — see the
 [pin capability matrix](hardware/pin-matrix.md). The
-[CHANGELOG](https://github.com/bauer-group/USB-Multi-Bus-Bridge/blob/main/CHANGELOG.md)
+[CHANGELOG](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/CHANGELOG.md)
 tracks the running release log; [decision records](adr/index.md)
 explain why the project shaped up the way it did.
