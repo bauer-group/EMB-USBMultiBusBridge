@@ -125,6 +125,7 @@ nav:
   - Hardware:
       - Rev-B design: hardware/rev-b.md
       - Pinout reference: hardware/pinout.md
+      - Pin capability matrix: hardware/pin-matrix.md
       - Bring-up log: hardware/bringup-log.md
   - Tutorials:
       - I²C — BME280: tutorials/i2c-bme280.md
