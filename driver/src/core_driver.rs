@@ -327,8 +327,11 @@ pub(crate) fn spawn_children(state: Arc<RpbridgeState>) -> Result<usize, i32> {
     Ok(spawned)
 }
 
-fn clone_caps_for_spawn(caps: &Capabilities) -> Vec<(KVec<u8>, u16)> {
-    let mut out = Vec::new();
+fn clone_caps_for_spawn(caps: &Capabilities) -> KVec<(KVec<u8>, u16)> {
+    // KVec is the kernel-allocator alias for Vec<T, KernelAllocator>.
+    // Plain Vec<T> in kernel rust requires the explicit allocator
+    // generic; KVec is the ergonomic shorthand.
+    let mut out = KVec::new();
     for bus in caps.buses.iter() {
         let mut cls = KVec::new();
         let _ = cls.extend_from_slice(bus.class.as_bytes(), GFP_KERNEL);
@@ -350,9 +353,25 @@ const RPBRIDGE_USB_PID: u16 = 0xFFFE;   // TESTING-RANGE — replace before rele
 
 pub(crate) struct RpbridgeDriver;
 
-#[vtable]
+// kernel::usb::Driver in 7.0 has dropped the `type Data` associated
+// type — driver-private state is now wired up via the kernel's
+// usb_set_intfdata / usb_get_intfdata pair which the R4L wrapper
+// owns. The probe()/disconnect() callbacks dispatch through that
+// stash directly so no per-driver "Data" type is needed.
+//
+// `suspend` / `resume` similarly moved out of the core trait into
+// kernel::usb::DriverPM (split per the same refactor that landed
+// kernel::pm::PowerOps in 7.0). We don't implement PM yet — the
+// device has no runtime PM hooks on the firmware side — so the
+// trait is simply not implemented and the kernel core treats us
+// as PM-unaware.
+//
+// 7.0 also dropped `#[vtable]` from the kernel::usb::Driver surface
+// — it was an early scaffolding for emitting the C
+// usb_driver function-pointer table; the Driver derive macro now
+// builds that table from the trait impl directly. The attribute
+// is unrecognised here so we omit it.
 impl kernel::usb::Driver for RpbridgeDriver {
-    type Data = Arc<RpbridgeState>;
     type IdInfo = ();
 
     const ID_TABLE: kernel::usb::IdTable<Self::IdInfo> =
@@ -415,23 +434,19 @@ impl kernel::usb::Driver for RpbridgeDriver {
         Ok(state)
     }
 
-    fn disconnect(_intf: &kernel::usb::Interface, _data: Arc<RpbridgeState>) {
+    fn disconnect(_intf: &kernel::usb::Interface) {
         pr_info!("rpbridge: interface disconnected\n");
         // auxiliary_device children are unregistered in each Child's
         // Drop impl (see gpio/i2c/spi/pwm/iio). TransportState goes
         // away when the last Arc reference drops — the kernel's USB
         // core guarantees no further bulk transfers after this
         // callback returns.
-    }
-
-    fn suspend(_intf: &kernel::usb::Interface, _msg: kernel::usb::Message)
-        -> Result
-    {
-        Ok(())
-    }
-
-    fn resume(_intf: &kernel::usb::Interface) -> Result {
-        Ok(())
+        //
+        // The previous signature carried `_data: Arc<RpbridgeState>`
+        // tied to the dropped `type Data`; in 7.0 the runtime stashes
+        // the per-driver state via usb_set_intfdata, retrieved by the
+        // R4L core before invoking this method, then released for us
+        // automatically.
     }
 }
 

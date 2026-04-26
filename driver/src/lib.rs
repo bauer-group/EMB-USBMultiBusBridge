@@ -29,6 +29,14 @@
 
 use kernel::prelude::*;
 
+// Required by pr_info! / pr_err! / etc. — the print-macro family
+// concatenates this prefix in front of every line so tagged dmesg
+// reads like "rpbridge: <message>". Earlier R4L releases generated
+// it from the module! macro; 7.0 expects every crate to ship it
+// explicitly at crate root.
+#[doc(hidden)]
+pub(crate) const __LOG_PREFIX: &[u8] = b"rpbridge\0";
+
 mod rpbp;
 mod cap;
 mod transport;
