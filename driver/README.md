@@ -1,10 +1,10 @@
 # RPBridge — Linux kernel driver
 
-**Rust-for-Linux, out-of-tree, DKMS-packaged.** One module (`rpbridge.ko`)
-matches the RPBridge composite USB device, parses its CBOR capability
-map at bind time, and spawns one `auxiliary_device` per advertised
-subsystem. Each auxiliary child then registers into the standard Linux
-subsystem core:
+**C, out-of-tree, DKMS-packaged.** One module (`rpbridge.ko`) matches
+the RPBridge composite USB device, parses its CBOR capability map at
+bind time, and spawns one `auxiliary_device` per advertised subsystem.
+Each auxiliary child then registers into the standard Linux subsystem
+core:
 
 | Auxiliary child      | Registers into                   | Userspace interface     |
 |----------------------|----------------------------------|-------------------------|
@@ -14,31 +14,38 @@ subsystem core:
 | `rpbridge-pwm`       | `pwm` sysfs                      | `/sys/class/pwm/…`      |
 | `rpbridge-iio`       | `iio` / `iio_buffer`             | `/sys/bus/iio/devices/…` |
 
-The UART side (3× CDC-ACM) is handled by mainline `usbser`. The CAN side
-is handled by mainline `gs_usb`. Neither lives in this module — both
-drivers already exist upstream and work out of the box with the
+The UART side (3× CDC-ACM) is handled by mainline `usbser`. The CAN
+side is handled by mainline `gs_usb`. Neither lives in this module —
+both drivers already exist upstream and work out of the box with the
 RPBridge firmware's descriptors.
 
 ## Kernel baseline
 
-* **Minimum**: Linux **6.13** (CONFIG_RUST=y, auxiliary_bus, Rust USB
-  bindings sufficient for this module's needs).
-* **Primary target**: whatever is shipping with the current Ubuntu LTS
-  and Fedora. See [`kernel-baseline/SUPPORT.md`](kernel-baseline/SUPPORT.md)
-  for the running support matrix.
+* **Minimum**: Linux **5.15 LTS** (auxiliary_bus baseline).
+* **Primary CI target**: Linux **7.0 LTS** (Ubuntu 26.04 LTS HWE
+  default). See [`kernel-baseline/SUPPORT.md`](kernel-baseline/SUPPORT.md)
+  for the full support matrix.
+* **No `CONFIG_RUST` requirement.** The driver is C against the stable
+  kernel-module ABI.
 
 ## Build & install
+
+### Via the project's Docker pipeline (recommended)
+
+```sh
+tools/build.sh driver           # builds rpbridge.ko in dist/driver/
+```
 
 ### From source, against your running kernel
 
 ```sh
-make                                 # preflight-checks CONFIG_RUST
-sudo make modules_install            # installs into /lib/modules/$(uname -r)/extra
+make                                  # builds against /lib/modules/$(uname -r)/build
+sudo make modules_install             # installs into /lib/modules/$(uname -r)/extra
 sudo depmod -a
 sudo modprobe rpbridge
 ```
 
-### Via DKMS (recommended)
+### Via DKMS
 
 ```sh
 sudo dkms add    driver
@@ -56,21 +63,18 @@ See the `.deb` / `.rpm` built by the CI workflow in
 
 ```
 driver/
-├── Kbuild                   # module target declaration
-├── Makefile                 # out-of-tree build wrapper + preflight
+├── Kbuild                   # module object list
+├── Makefile                 # out-of-tree build wrapper
 ├── Kconfig                  # for eventual upstream submission
-├── rust-toolchain.toml      # lint/IDE toolchain (kernel uses its own)
 ├── dkms.conf.in             # DKMS recipe template
 ├── src/
-│   ├── lib.rs               # crate root — module_usb_driver! + modules
-│   ├── rpbp.rs              # RPBP v1 framing + CRC-32C
-│   ├── cap.rs               # CBOR capability parser
-│   ├── core_driver.rs       # USB probe/disconnect + auxiliary spawn
-│   ├── gpio.rs              # gpio_chip child (stub)
-│   ├── i2c.rs               # i2c_adapter child (stub)
-│   ├── spi.rs               # spi_controller child (stub)
-│   ├── pwm.rs               # pwm_chip child (stub)
-│   └── iio.rs               # iio_dev child (stub)
+│   ├── main.c               # USB driver entry, probe/disconnect
+│   ├── rpbp.h               # wire-protocol constants
+│   ├── rpbp_framing.[ch]    # header encode/parse, frame build/validate
+│   ├── rpbp_crc32c.[ch]     # Castagnoli CRC-32C lookup table
+│   ├── transport.[ch]       # synchronous round-trip over bulk pair
+│   ├── cap.[ch]             # CBOR capability parser
+│   └── rpbridge.h           # shared per-device state struct
 ├── udev/
 │   └── 70-rpbridge.rules    # user-accessible permissions + symlinks
 ├── modprobe/
@@ -87,21 +91,35 @@ driver/
 ## Testing
 
 ```sh
-# Host-runnable unit tests (CRC, framing — no kernel required)
-cargo test --manifest-path ../userspace/rpbridge-protocol/Cargo.toml
+# Static analysis with the kernel tree's checkpatch.pl
+make checkpatch
 
-# KUnit against a locally-built Rust-enabled kernel
-./tools/scripts/run-kunit.sh
+# Compile against the running kernel and dist-stage the .ko
+tools/build.sh driver
 
-# umockdev replay of recorded USB sessions
+# umockdev replay of recorded USB sessions (planned)
 ./tools/scripts/run-umockdev.sh
 ```
 
-## Why Rust
+## Why C
 
-Historical note — the original design draft proposed a C primary +
-Rust future migration. The current baseline is **Rust only**: the
-Rust-for-Linux bindings required by this module (USB, auxiliary_bus,
-gpio, i2c, spi, pwm, iio) are stable as of Linux 6.13, and maintaining
-two parallel implementations would be pure tax. See
-[`docs/adr/0003-language-choice.md`](../docs/adr/0003-language-choice.md).
+The driver was first attempted in Rust-for-Linux. R4L's API is still
+stabilising — between Linux 6.18 and 7.0 the `kernel::usb::Driver`
+trait was restructured, `KString` removed, the `#[vtable]` mechanism
+dropped, and the entire probe lifecycle moved to a `PinInit`-style
+construction model. Out-of-tree R4L modules pay this drift cost on
+every major kernel release for as long as the API surface stays
+unstable.
+
+For a driver that needs to land on **whatever Linux Ubuntu ships
+today** — which is currently 7.0, will be 8.x within a year, and so
+on — Linux's stable kernel-module ABI guarantee for C makes the
+maintenance equation flip: a C driver written against the published
+kernel headers compiles unchanged across years of kernel releases.
+We took that win.
+
+The earlier Rust scaffold remains available on the
+`archive/rust-driver` git branch for anyone who wants to revisit the
+question once R4L stabilises further. ADR-0003
+([`docs/adr/0003-language-choice.md`](../docs/adr/0003-language-choice.md))
+will track the eventual reconsideration.
