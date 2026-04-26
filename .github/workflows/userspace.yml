@@ -6,10 +6,12 @@ on:
     branches: [main]
     paths:
       - 'userspace/**'
+      - 'tools/**'
       - '.github/workflows/userspace.yml'
   pull_request:
     paths:
       - 'userspace/**'
+      - 'tools/**'
       - '.github/workflows/userspace.yml'
   workflow_dispatch:
   workflow_call:
@@ -22,92 +24,59 @@ permissions:
   contents: read
 
 jobs:
-  fmt-clippy-test:
+  test:
     name: fmt + clippy + test
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: userspace
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install libudev / libusb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libudev-dev libusb-1.0-0-dev pkg-config
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Build builder image (cached)
+        uses: docker/build-push-action@v6
         with:
-          components: rustfmt, clippy
+          context: tools/docker
+          file:    tools/docker/builder.Dockerfile
+          tags:    rpbridge-builder:local
+          load:    true
+          cache-from: type=gha,scope=builder
+          cache-to:   type=gha,scope=builder,mode=max
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: userspace
-
-      - name: cargo fmt
-        run: cargo fmt --all -- --check
-
-      - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: cargo test (default features)
-        run: cargo test --workspace
-
-      - name: cargo test (no default features, protocol only)
-        run: cargo test -p rpbridge-protocol --no-default-features
+      - name: cargo fmt + clippy + test
+        run: tools/build.sh test
 
   cross-build:
     name: cross-build (${{ matrix.target }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: userspace
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+        target:
+          - { id: x86_64,  flag: --x86_64,  triple: x86_64-unknown-linux-gnu  }
+          - { id: aarch64, flag: --aarch64, triple: aarch64-unknown-linux-gnu }
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install stable Rust + target
-        uses: dtolnay/rust-toolchain@stable
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build builder image (cached)
+        uses: docker/build-push-action@v6
         with:
-          targets: ${{ matrix.target }}
+          context: tools/docker
+          file:    tools/docker/builder.Dockerfile
+          tags:    rpbridge-builder:local
+          load:    true
+          cache-from: type=gha,scope=builder
+          cache-to:   type=gha,scope=builder,mode=max
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: userspace
-          key: ${{ matrix.target }}
-
-      - name: Install cross deps
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libudev-dev libusb-1.0-0-dev pkg-config
-          mkdir -p .cargo
-          cat >> .cargo/config.toml <<'EOF'
-          [target.aarch64-unknown-linux-gnu]
-          linker = "aarch64-linux-gnu-gcc"
-          EOF
-
-      - name: Install native deps
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libudev-dev libusb-1.0-0-dev pkg-config
-
-      - name: Build CLI
-        run: cargo build --release --target ${{ matrix.target }} -p rpbridge-ctl
+      - name: Cross-build CLI
+        run: tools/build.sh userspace ${{ matrix.target.flag }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rpbridge-ctl-${{ matrix.target }}
-          path: userspace/target/${{ matrix.target }}/release/rpbridge-ctl
+          name: rpbridge-ctl-${{ matrix.target.triple }}
+          path: dist/userspace/rpbridge-ctl-${{ matrix.target.triple }}
           if-no-files-found: error
           retention-days: 30

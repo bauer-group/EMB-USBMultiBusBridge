@@ -6,12 +6,14 @@ on:
     branches: [main]
     paths:
       - 'firmware/**'
+      - 'tools/**'
       - '.github/workflows/firmware.yml'
     tags:
       - 'v*'
   pull_request:
     paths:
       - 'firmware/**'
+      - 'tools/**'
       - '.github/workflows/firmware.yml'
   workflow_dispatch:
   workflow_call:
@@ -23,40 +25,15 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  PICO_SDK_PATH:  ${{ github.workspace }}/firmware/third_party/pico-sdk
-  CCACHE_DIR:     ${{ github.workspace }}/.ccache
-  CCACHE_MAXSIZE: 500M
-
-  # Size budgets enforced by the size-guard step.
-  #
-  # FLASH_BUDGET_KB applies to the binary footprint
-  # (`__flash_binary_end - 0x10000000`) and triggers a soft fail well
-  # below the chip's physical limit so creep is caught early — not at
-  # 99 %. The linker also enforces a hard cap derived from each board
-  # header's PICO_FLASH_SIZE_BYTES (2 MB on rev-B, 4 MB on Pico 2),
-  # so accidental overflows are caught at link time regardless.
-  #
-  # RAM_BUDGET_KB applies to the static footprint (.data + .bss +
-  # .ram_vector_table) — the part allocated before the heap or any
-  # runtime ring buffer touches RAM. Stays well below the 520 KiB the
-  # chip actually has so a creep stays visible.
-  #
-  # Today (M11): ~52 KiB flash + ~52 KiB RAM static. Budgets give
-  # ~5x headroom; bump deliberately when a feature genuinely needs it.
-  RPBRIDGE_FLASH_BUDGET_KB: 256
-  RPBRIDGE_RAM_BUDGET_KB:   96
-
 jobs:
   build:
-    name: build (${{ matrix.board }} / ${{ matrix.build_type }})
+    name: build (${{ matrix.board }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        board:       [rpbridge_rp2354b, rpbridge_pico2]
-        build_type:  [Release, RelWithDebInfo]
+        board: [rpbridge_rp2354b, rpbridge_pico2]
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -64,137 +41,37 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build \
-            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
-            python3 python3-pip \
-            libusb-1.0-0-dev pkg-config
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Verify toolchain
-        run: |
-          arm-none-eabi-gcc --version
-          cmake --version
-          ninja --version
-
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+      # GHA layer cache skips the 5-10 min apt + rustup phase on repeat
+      # runs. Cache key is derived from Dockerfile contents by buildx,
+      # so editing builder.Dockerfile invalidates the cache cleanly.
+      - name: Build builder image (cached)
+        uses: docker/build-push-action@v6
         with:
-          key: firmware-${{ matrix.board }}-${{ matrix.build_type }}
-          max-size: 500M
-          variant: ccache
+          context: tools/docker
+          file:    tools/docker/builder.Dockerfile
+          tags:    rpbridge-builder:local
+          load:    true
+          cache-from: type=gha,scope=builder
+          cache-to:   type=gha,scope=builder,mode=max
 
-      - name: Configure
-        working-directory: firmware
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DPICO_BOARD=${{ matrix.board }} \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build
-        working-directory: firmware
-        run: cmake --build build --parallel
-
-      - name: Resolve artefact basename
-        id: names
-        working-directory: firmware
-        run: |
-          # The CMake config sets OUTPUT_NAME to "rpbridge-<suffix>"
-          # where <suffix> is the board name minus the "rpbridge_"
-          # prefix. Mirror that here so artefact paths line up.
-          suffix="${{ matrix.board }}"
-          suffix="${suffix#rpbridge_}"
-          echo "basename=rpbridge-${suffix}" >> "$GITHUB_OUTPUT"
-
-      - name: Size report
-        working-directory: firmware
-        run: |
-          base="${{ steps.names.outputs.basename }}"
-          arm-none-eabi-size --format=berkeley "build/${base}.elf" | tee build/size.txt
-          echo "" >> build/size.txt
-          arm-none-eabi-size -A          "build/${base}.elf" | tee -a build/size.txt
-
-      - name: Size guard (creep + overflow check)
-        working-directory: firmware
-        env:
-          BASE: ${{ steps.names.outputs.basename }}
-        # Soft caps catch slow growth before it eats into the linker's
-        # hard cap (= physical flash). The linker itself rejects an
-        # actual overflow with `region 'FLASH' overflowed by N bytes`,
-        # which surfaces in the build log — this step is the early
-        # warning, not the safety net.
-        run: |
-          set -euo pipefail
-          map="build/${BASE}.elf.map"
-          [[ -f "$map" ]] || { echo "::error::no map at $map"; exit 1; }
-
-          # Static .data + .bss + .ram_vector_table from `size -A`.
-          # The remaining RAM is the heap+stack budget at runtime.
-          ram_used=$(arm-none-eabi-size -A "build/${BASE}.elf" \
-            | awk '/^\.data |^\.bss |^\.ram_vector_table /{s+=$2} END{print s+0}')
-
-          # Flash footprint = __flash_binary_end - FLASH origin (0x10000000).
-          # The map has a single line of the form:
-          #     <addr>      PROVIDE (__flash_binary_end = .)
-          # Walk that line's fields and pick the 0x10…-prefixed token.
-          # gawk parses the 0x… literal in arithmetic context (Ubuntu CI
-          # runners use gawk by default).
-          flash_used=$(awk '/PROVIDE \(__flash_binary_end = \.\)/ {
-            for (i = 1; i <= NF; i++) {
-              if ($i ~ /^0x10[0-9a-f]+$/) {
-                printf "%d", strtonum($i) - 0x10000000
-                exit
-              }
-            }
-          }' "$map")
-          [[ -n "$flash_used" ]] || { echo "::error::could not parse __flash_binary_end from $map"; exit 1; }
-
-          flash_kb=$(( flash_used / 1024 ))
-          ram_kb=$(( ram_used / 1024 ))
-
-          echo "" | tee -a build/size.txt
-          echo "── Size guard ────────────────────────────────────────" | tee -a build/size.txt
-          printf "Flash footprint : %6d B (%4d KiB)  budget %4d KiB\n" \
-            "$flash_used" "$flash_kb" "$RPBRIDGE_FLASH_BUDGET_KB" | tee -a build/size.txt
-          printf "Static RAM       : %6d B (%4d KiB)  budget %4d KiB\n" \
-            "$ram_used"  "$ram_kb"   "$RPBRIDGE_RAM_BUDGET_KB"   | tee -a build/size.txt
-
-          rc=0
-          if (( flash_kb > RPBRIDGE_FLASH_BUDGET_KB )); then
-            echo "::error::Flash footprint ${flash_kb} KiB exceeds budget ${RPBRIDGE_FLASH_BUDGET_KB} KiB."
-            echo "Either justify the growth and bump RPBRIDGE_FLASH_BUDGET_KB in firmware.yml,"
-            echo "or shrink the binary."
-            rc=1
-          fi
-          if (( ram_kb > RPBRIDGE_RAM_BUDGET_KB )); then
-            echo "::error::Static RAM ${ram_kb} KiB exceeds budget ${RPBRIDGE_RAM_BUDGET_KB} KiB."
-            echo "Either justify the growth and bump RPBRIDGE_RAM_BUDGET_KB in firmware.yml,"
-            echo "or audit large .bss / .data symbols (arm-none-eabi-nm --size-sort)."
-            rc=1
-          fi
-          exit "$rc"
-
-      - name: Checksums
-        working-directory: firmware/build
-        run: |
-          base="${{ steps.names.outputs.basename }}"
-          sha256sum "${base}.uf2" "${base}.elf" "${base}.bin" "${base}.hex" \
-            > CHECKSUMS.txt
+      - name: Build firmware (size-guard runs inline)
+        run: tools/build.sh firmware ${{ matrix.board }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ matrix.board }}-${{ matrix.build_type }}
+          name: firmware-${{ matrix.board }}
+          # Short suffix matches firmware/build-all-variants.sh:
+          # rpbridge_rp2354b -> rp2354b/, rpbridge_pico2 -> pico2/.
           path: |
-            firmware/build/${{ steps.names.outputs.basename }}.uf2
-            firmware/build/${{ steps.names.outputs.basename }}.elf
-            firmware/build/${{ steps.names.outputs.basename }}.bin
-            firmware/build/${{ steps.names.outputs.basename }}.hex
-            firmware/build/size.txt
-            firmware/build/CHECKSUMS.txt
+            dist/firmware/*/rpbridge-*.uf2
+            dist/firmware/*/rpbridge-*.elf
+            dist/firmware/*/rpbridge-*.bin
+            dist/firmware/*/rpbridge-*.hex
+            dist/firmware/*/size.txt
+            dist/firmware/*/CHECKSUMS.txt
           if-no-files-found: error
           retention-days: 30
