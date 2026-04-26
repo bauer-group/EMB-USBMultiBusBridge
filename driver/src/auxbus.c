@@ -39,6 +39,7 @@ struct aux_track {
  */
 static const char *const aux_supported_classes[] = {
 	"gpio", "i2c", "spi", "pwm", "adc",
+	"led", "dmx", "onewire", "i2s",
 	NULL,
 };
 
@@ -201,4 +202,13 @@ void rpbridge_unregister_aux_children(struct rpbridge_dev *dev)
 	int  rpbridge_##name##_register(void)   { return 0; } \
 	void rpbridge_##name##_unregister(void) { }
 
-/* All five subsystem .c files now provide real impls — no stubs left. */
+/* led.c provides the real impl; dmx/onewire/i2s land in their own
+ * commits and use stubs here until then so spawn_aux_children() can
+ * still skip-or-bind the auxbus children for those classes. */
+#define DEFINE_SUBSYS_STUB(name) \
+	int  rpbridge_##name##_register(void)   { return 0; } \
+	void rpbridge_##name##_unregister(void) { }
+
+DEFINE_SUBSYS_STUB(dmx)
+DEFINE_SUBSYS_STUB(onewire)
+DEFINE_SUBSYS_STUB(i2s)

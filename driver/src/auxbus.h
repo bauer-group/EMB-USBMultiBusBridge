@@ -72,5 +72,13 @@ int  rpbridge_pwm_register(void);
 void rpbridge_pwm_unregister(void);
 int  rpbridge_iio_register(void);
 void rpbridge_iio_unregister(void);
+int  rpbridge_led_register(void);
+void rpbridge_led_unregister(void);
+int  rpbridge_dmx_register(void);
+void rpbridge_dmx_unregister(void);
+int  rpbridge_onewire_register(void);
+void rpbridge_onewire_unregister(void);
+int  rpbridge_i2s_register(void);
+void rpbridge_i2s_unregister(void);
 
 #endif /* RPBRIDGE_AUX_H */

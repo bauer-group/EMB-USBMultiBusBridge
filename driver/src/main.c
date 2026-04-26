@@ -285,21 +285,29 @@ static int __init rpbridge_module_init(void)
 {
 	int ret;
 
-	ret = rpbridge_gpio_register();   if (ret) goto err;
-	ret = rpbridge_i2c_register();    if (ret) goto err_gpio;
-	ret = rpbridge_spi_register();    if (ret) goto err_i2c;
-	ret = rpbridge_pwm_register();    if (ret) goto err_spi;
-	ret = rpbridge_iio_register();    if (ret) goto err_pwm;
+	ret = rpbridge_gpio_register();    if (ret) goto err;
+	ret = rpbridge_i2c_register();     if (ret) goto err_gpio;
+	ret = rpbridge_spi_register();     if (ret) goto err_i2c;
+	ret = rpbridge_pwm_register();     if (ret) goto err_spi;
+	ret = rpbridge_iio_register();     if (ret) goto err_pwm;
+	ret = rpbridge_led_register();     if (ret) goto err_iio;
+	ret = rpbridge_dmx_register();     if (ret) goto err_led;
+	ret = rpbridge_onewire_register(); if (ret) goto err_dmx;
+	ret = rpbridge_i2s_register();     if (ret) goto err_onewire;
 	ret = usb_register(&rpbridge_driver);
 	if (ret)
-		goto err_iio;
+		goto err_i2s;
 	return 0;
 
-err_iio:  rpbridge_iio_unregister();
-err_pwm:  rpbridge_pwm_unregister();
-err_spi:  rpbridge_spi_unregister();
-err_i2c:  rpbridge_i2c_unregister();
-err_gpio: rpbridge_gpio_unregister();
+err_i2s:     rpbridge_i2s_unregister();
+err_onewire: rpbridge_onewire_unregister();
+err_dmx:     rpbridge_dmx_unregister();
+err_led:     rpbridge_led_unregister();
+err_iio:     rpbridge_iio_unregister();
+err_pwm:     rpbridge_pwm_unregister();
+err_spi:     rpbridge_spi_unregister();
+err_i2c:     rpbridge_i2c_unregister();
+err_gpio:    rpbridge_gpio_unregister();
 err:
 	return ret;
 }
@@ -307,6 +315,10 @@ err:
 static void __exit rpbridge_module_exit(void)
 {
 	usb_deregister(&rpbridge_driver);
+	rpbridge_i2s_unregister();
+	rpbridge_onewire_unregister();
+	rpbridge_dmx_unregister();
+	rpbridge_led_unregister();
 	rpbridge_iio_unregister();
 	rpbridge_pwm_unregister();
 	rpbridge_spi_unregister();
