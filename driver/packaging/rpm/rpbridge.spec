@@ -11,7 +11,7 @@
 Name:           rpbridge-dkms
 Version:        %{modver}
 Release:        1%{?dist}
-Summary:        RPBridge USB multi-bus bridge Rust kernel driver (DKMS)
+Summary:        RPBridge USB multi-bus bridge kernel driver (DKMS)
 
 License:        GPL-2.0
 URL:            https://github.com/bauer-group/EMB-USBMultiBusBridge
@@ -27,8 +27,13 @@ Recommends:     can-utils
 
 %description
 RPBridge is an open-source USB-to-multi-bus developer tool built on the
-Raspberry Pi RP2354B. This package contains the Rust-for-Linux kernel
-module, packaged for DKMS. A kernel with CONFIG_RUST=y is required.
+Raspberry Pi RP2354B. The bridge exposes I²C, SPI, UART, GPIO, PWM,
+ADC, CAN 2.0B, addressable LED strips, DMX-512, 1-Wire and I²S to a
+Linux host as standard subsystem devices, usable with stock tools.
+
+This package contains the kernel module source, packaged for DKMS. The
+driver is plain C against the stable kernel-module ABI; minimum kernel
+version is 5.15 (auxiliary_bus baseline). No CONFIG_RUST requirement.
 
 %prep
 %setup -q -n %{name}-%{version}
@@ -68,4 +73,4 @@ fi
 
 %changelog
 * Wed Apr 22 2026 BAUER GROUP <karl.bauer@bauer-group.com> - 0.1.0-1
-- Initial packaging of the rpbridge Rust kernel driver as DKMS source.
+- Initial packaging of the rpbridge kernel driver as DKMS source.

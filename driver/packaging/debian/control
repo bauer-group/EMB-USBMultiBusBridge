@@ -19,12 +19,15 @@ Depends: ${misc:Depends},
 Recommends: libgpiod2 | libgpiod-dev,
             i2c-tools,
             can-utils
-Description: RPBridge USB multi-bus bridge kernel driver (Rust, DKMS)
+Description: RPBridge USB multi-bus bridge kernel driver (DKMS)
  RPBridge is an open-source USB-to-multi-bus developer tool built on the
- Raspberry Pi RP2354B. The bridge exposes I²C, SPI, UART, GPIO, PWM, ADC
- and CAN 2.0B to a Linux host as standard subsystem devices, usable with
- stock tools (i2c-tools, libgpiod, can-utils, spidev_test, iio_info).
+ Raspberry Pi RP2354B. The bridge exposes I²C, SPI, UART, GPIO, PWM, ADC,
+ CAN 2.0B, addressable LED strips, DMX-512, 1-Wire and I²S to a Linux
+ host as standard subsystem devices, usable with stock tools (i2c-tools,
+ libgpiod, can-utils, spidev_test, iio_info, w1-tools).
  .
- This package ships the Linux kernel driver source (Rust-for-Linux) and
- integrates it with DKMS so the module is rebuilt automatically on
- kernel upgrades. A kernel with CONFIG_RUST=y is required.
+ This package ships the Linux kernel driver source and integrates it
+ with DKMS so the module is rebuilt automatically on kernel upgrades.
+ The driver is plain C against the stable kernel-module ABI; minimum
+ kernel version is 5.15 (auxiliary_bus baseline), with CI verification
+ against the 7.0 LTS kernel that ships with Ubuntu 26.04 LTS.

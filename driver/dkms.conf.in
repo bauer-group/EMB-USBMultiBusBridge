@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# DKMS recipe for the RPBridge Rust kernel driver. The build step shells
-# out to our wrapper Makefile, which in turn invokes the kernel's own
-# Rust-for-Linux build rules. DKMS only needs to know how to produce
-# rpbridge.ko and where to install it.
+# DKMS recipe for the RPBridge C kernel driver. The build step shells
+# out to our wrapper Makefile, which in turn invokes plain kbuild
+# against /lib/modules/${kernelver}/build. DKMS only needs to know
+# how to produce rpbridge.ko and where to install it.
 
 PACKAGE_NAME="rpbridge"
 PACKAGE_VERSION="@VERSION@"
@@ -18,8 +18,9 @@ DEST_MODULE_LOCATION[0]="/updates"
 # Auto-install on future kernel upgrades.
 AUTOINSTALL="yes"
 
-# The module only loads on kernels that have Rust-for-Linux enabled.
-# If the user's current kernel is missing CONFIG_RUST, DKMS's generic
-# "module not found" fallback is fine — the wrapper Makefile returns a
-# non-zero exit with an explanatory message before any build work.
+# The module compiles against any kernel from 5.15 onwards (the
+# auxiliary_bus baseline). No CONFIG_RUST gate; Linux's stable
+# kernel-module ABI carries the binary forward across major
+# kernel releases. See driver/kernel-baseline/SUPPORT.md for the
+# full distribution / kernel-version compatibility matrix.
 REMAKE_INITRD="no"
