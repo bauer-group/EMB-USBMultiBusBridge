@@ -1,6 +1,6 @@
 config RPBRIDGE
 	tristate "RPBridge USB multi-bus bridge driver"
-	depends on USB && RUST
+	depends on USB
 	depends on AUXILIARY_BUS
 	help
 	  This driver exposes the RPBridge USB multi-bus developer tool
@@ -13,9 +13,10 @@ config RPBRIDGE
 	  is bound by the mainline drivers/net/can/usb/gs_usb.ko driver —
 	  this module does not duplicate it.
 
-	  The driver is written entirely in Rust-for-Linux. It requires a
-	  kernel with CONFIG_RUST=y and a pinned Rust toolchain that
-	  matches the kernel's Rust version.
+	  Implemented in C against the stable Linux kernel API; no
+	  CONFIG_RUST dependency. Builds against any kernel from 5.15
+	  onwards (the auxiliary_bus baseline). Tested in CI against the
+	  Linux 7.0 LTS kernel that ships with Ubuntu 26.04 LTS.
 
 	  If unsure, say N.
 
