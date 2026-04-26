@@ -193,11 +193,14 @@ void rpbridge_unregister_aux_children(struct rpbridge_dev *dev)
 
 /* ───── Per-subsystem stubs (real impls land in their own commits) ──── */
 
+/* Each rpbridge_<subsys>_register() either lives in its own
+ * subsystem .c (real implementation) or is a no-op stub here. As
+ * each subsystem .c lands, its DEFINE_SUBSYS_STUB() line gets
+ * removed below. */
 #define DEFINE_SUBSYS_STUB(name) \
 	int  rpbridge_##name##_register(void)   { return 0; } \
 	void rpbridge_##name##_unregister(void) { }
 
-DEFINE_SUBSYS_STUB(gpio)
 DEFINE_SUBSYS_STUB(i2c)
 DEFINE_SUBSYS_STUB(spi)
 DEFINE_SUBSYS_STUB(pwm)

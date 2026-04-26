@@ -17,8 +17,9 @@ rpbridge-y := \
 	src/rpbp_crc32c.o   \
 	src/transport.o     \
 	src/cap.o           \
-	src/session.o      \
-	src/auxbus.o
+	src/session.o       \
+	src/auxbus.o        \
+	src/gpio.o
 
 # Strict warning posture matching the firmware's bar. Kernel build
 # already adds -Wall + -Wextra subset; these are the additional
