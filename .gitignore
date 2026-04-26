@@ -60,12 +60,23 @@ Module.symvers
 modules.order
 .tmp_versions/
 .[oas].cmd
+# kbuild dependency-tracking files (e.g. .main.o.cmd, .module-common.o.cmd).
+# Pattern matches "dot, anything, dot, <one of o/a/s/ko/mod>, dot cmd".
+.*.[oas].cmd
+.*.ko.cmd
+.*.mod.cmd
+.*.mod.o.cmd
+..module-common.o.cmd
+.modules.order.cmd
+.Module.symvers.cmd
 .*.d
 .*.tmp
 .config
 .config.old
 scripts/basic/
 Modules.symvers
+# generated dep file when kbuild scans rpbridge sources at top-level
+src/.*.cmd
 
 # DKMS
 *.dkms.tar.gz
