@@ -1,4 +1,14 @@
-# Firmware — implementation roadmap
+# Firmware — implementation roadmap (working backlog)
+
+> **Looking for the at-a-glance status report?** See
+> [`COVERAGE.md`](COVERAGE.md) — the consumer-facing "what's
+> implemented + tested" matrix, kept in lock-step with this file
+> and updated whenever a milestone closes.
+>
+> This page is the **developer working backlog**: granular
+> per-component checkboxes, in-flight items, and post-1.0 follow-
+> ups. New tasks land here; closed milestones graduate into the
+> coverage matrix.
 
 Track for each component whether it is implemented (`[x]`) or pending
 (`[ ]`). Every entry points to the corresponding module and the
