@@ -1,7 +1,18 @@
 # ADR-0007 — FFI bindings as the interim Rust-for-Linux transport
 
-**Status:** Accepted — 2026-04-24
+**Status:** Superseded — 2026-04-26 by [ADR-0003 amendment](0003-language-choice.md#amendment--2026-04-26--driver-reverted-to-c)
+**Original status:** Accepted — 2026-04-24
 **Complements:** [ADR-0003 — Language choice — Rust in kernel and userspace](0003-language-choice.md)
+
+> **Superseded note (2026-04-26).** The Rust-for-Linux driver
+> direction this ADR scaffolded was abandoned in favour of a C
+> rewrite — see ADR-0003 §Amendment for the full reasoning. The
+> historical decision record below is preserved verbatim because it
+> documents the reasoning that was operative at the time of the
+> attempt; the FFI-binding strategy described here no longer
+> reflects the production driver, which is plain C against the
+> stable kernel-module ABI (`driver/src/main.c` + per-subsystem
+> `.c` files; no FFI shim layer).
 
 ## Context
 

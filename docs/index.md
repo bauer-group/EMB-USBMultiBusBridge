@@ -3,8 +3,8 @@
 !!! warning "Alpha — pre-production"
     RPBridge is in **alpha**. The firmware feature set is complete and
     self-tested on both supported boards, but the project still uses
-    placeholder USB VID/PID, the Rust-for-Linux kernel adapters are
-    gated behind `CONFIG_RPBRIDGE_*`, and the udev rule set is not yet
+    placeholder USB VID/PID, the C kernel driver has not yet been
+    validated against real hardware, and the udev rule set is not yet
     final. **Do not deploy on production hosts.** See
     [`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md)
     for the live status matrix.
@@ -53,7 +53,8 @@ strips, DMX-512, 1-Wire and I²S. Use `i2c-tools`, `libgpiod`,
 
     ---
 
-    Rust-for-Linux module, `auxiliary_bus` children, GPIO cdev v2.
+    C kernel module, `auxiliary_bus` children for nine subsystems
+    (gpio / i2c / spi / pwm / iio / led / dmx / w1 / i2s).
     DKMS packages for Debian/Ubuntu/Fedora.
 
     [:octicons-arrow-right-24: Driver guide](driver/overview.md)
@@ -66,7 +67,7 @@ strips, DMX-512, 1-Wire and I²S. Use `i2c-tools`, `libgpiod`,
 |------------------------|-------------------------------------------------------------|
 | `firmware/`            | RP2350-family firmware (C + pico-sdk 2.2.0, can2040 for CAN). Multi-board build via `RPBRIDGE_BOARD=rpbridge_rp2354b\|rpbridge_pico2`. |
 | `firmware/COVERAGE.md` | Live, consumer-facing status matrix — start here to see what is shipped vs. open. |
-| `driver/`              | Rust-for-Linux kernel module, DKMS-packaged.                |
+| `driver/`              | C kernel module, DKMS-packaged.                             |
 | `userspace/`           | Rust workspace: protocol lib, client lib, `rpbridge-ctl`, bench. |
 | `docs/`                | This documentation site (mkdocs-material).                  |
 | `dts/overlays/`        | Device-tree overlays for auto-provisioning onboard sensors. |

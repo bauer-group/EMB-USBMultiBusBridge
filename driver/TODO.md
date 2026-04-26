@@ -1,201 +1,159 @@
 # Driver — implementation roadmap
 
 Track which piece of `rpbridge.ko` is implemented (`[x]`) or still
-pending (`[ ]`). Each entry points to the module, the authoritative
-spec, and (where applicable) the upstream kernel binding it depends
-on.
+pending (`[ ]`). Each entry points to the C source file and the
+authoritative spec / kernel binding.
 
-## M10 — RPBP client layer (kernel-binding agnostic)
+## Implementation status
 
-All wire / Client / Sequencer / CompletionTable logic. Complete.
+The driver was reset from the original Rust-for-Linux scaffold to
+a clean C implementation on 2026-04-26 (see ADR-0003 amendment).
+The previous Rust attempt is preserved on the `archive/rust-driver`
+git branch.
 
-- [x] `src/rpbp.rs`, `src/cap.rs`, `src/transport.rs`.
-- [x] `src/{gpio,i2c,spi,pwm,iio}.rs` wire + Client.
+### Core (USB driver entry, transport, capability map)
 
-See `CHANGELOG.md` `[Unreleased] → Added` for the M10 bullet list.
+- [x] `src/main.c` — USB driver registration; `probe()` /
+      `disconnect()` with kref-based lifetime; `module_init` /
+      `module_exit` register the per-subsystem auxiliary_drivers
+      in dependency order.
+- [x] `src/rpbp.h` — wire constants (msg-types, subsystems, status
+      codes, opcode namespaces, flag bits, VID/PID).
+- [x] `src/rpbp_framing.{c,h}` — header encode/parse, full-frame
+      build/validate, status-to-errno mapper. Defensive size + null
+      checks at every entry; FRAGMENT+LAST contradiction caught.
+- [x] `src/rpbp_crc32c.{c,h}` — Castagnoli CRC-32C with a baked-in
+      lookup table. Independent of `<linux/crc32c.h>` so the driver
+      loads on stripped distro kernels without `CONFIG_LIBCRC32C`.
+- [x] `src/transport.{c,h}` — synchronous CMD_REQUEST/CMD_RESPONSE
+      round-trip over the bulk pair. Per-device transport_lock
+      serialises in-flight requests; seq_lock guards the rolling
+      sequence allocator. All allocations kfree'd on every exit
+      path, including timeouts and -ENOMEM.
+- [x] `src/cap.{c,h}` — RFC 8949 §3 CBOR walker. Parses
+      proto / fw / board / serial / mtu / buses with bounded
+      allocations and per-container length validation. Unknown
+      keys skipped (forward-compat).
+- [x] `src/session.{c,h}` — HELLO + GET_CAPABILITIES glue used
+      once at probe(). HELLO refuses to attach with
+      -EPROTONOSUPPORT on a major-version mismatch.
+- [x] `src/auxbus.{c,h}` — auxiliary_device spawn dispatcher with
+      a class allow-list + per-device kref tracking + safe revoke
+      path. Children hold an extra parent-kref so a still-active
+      callback during disconnect() doesn't race the kref release.
+- [x] `src/rpbridge.h` — shared per-device state struct.
 
-## M11 — Driver fully functional via FFI (ADR-0007)
+### Subsystem children — 100 % of firmware-exposed buses covered
 
-### M11a — FFI scaffolding
-
-- [x] `src/ffi/mod.rs` + `src/ffi/bindings.rs` — hand-written
-      `extern "C"` declarations pinned to Linux 6.13 LTS.
-- [x] `src/ffi/shims.c` — C shim for inline helpers + struct-field
-      accessors + typed object allocators.
-- [x] Kbuild wires `src/ffi/shims.o` alongside `src/lib.o`.
-
-### M11b — USB transport FFI
-
-- [x] `src/ffi/wait.rs` — `WaitQueue` over `wait_queue_head_t`.
-- [x] `src/ffi/usb.rs` — `Interface` + `BulkEndpoint` around
-      `usb_bulk_msg` + endpoint walking.
-- [x] `src/ffi/auxiliary.rs` — `parent_device()` helper (full
-      auxiliary_bus wrapper is M12).
-
-### M11c — Core driver
-
-- [x] `core_driver::round_trip()` — synchronous request/response
-      via the bulk IN/OUT pair. Validates CRC + header, correlates
-      (channel, seq).
-- [x] `core_driver::probe()` — end-to-end session: bulk-pair
-      discovery → HELLO → GET_CAPABILITIES → spawn_children.
-- [x] Stub disconnect() with a comment that aux children's Drop
-      impls handle teardown.
-
-### M11f–j — Subsystem kernel integration
-
-- [x] **GPIO** — `gpio_chip` registered; `get` / `set` /
-      `direction_input` / `direction_output` / `request` / `free`
-      trampolines bridge to the Client. Accessible via
-      `/dev/gpiochipN`, libgpiod, `gpioget` / `gpioset`.
-- [x] **I²C** — `i2c_adapter` registered; `master_xfer` handles
-      one message at a time with typed Write/Read directions.
-      Accessible via `/dev/i2c-N`, `i2cdetect`, `i2cget` / `i2cset`,
-      kernel drivers (sensors etc.).
-- [x] **SPI** — `spi_controller` registered; `transfer_one_message`
-      walks the transfer list and honours `cs_change`. Accessible
-      via `spidev` on `/dev/spidevX.Y`, `spi-pipe`, `spidev_test`.
-- [x] **PWM** — `pwm_chip` registered with `apply` + `get_state`.
-      Accessible via `/sys/class/pwm/pwmchipN/`, the standard sysfs
-      interface (export / period / duty_cycle / enable).
-- [x] **IIO (single-shot)** — `iio_device` registered with
-      `read_raw`. Voltage channels 0..3 and on-die temp channel 4
-      exposed. Accessible via `/sys/bus/iio/devices/iio:deviceN/`,
-      `iio_info`, `cat in_voltage0_raw`.
-- [ ] **IIO (triggered buffer)** — `iio_readdev -b ... -s ...`
-      streaming needs a kthread that consumes STREAM_DATA frames
-      from the USB IN endpoint outside the request/response path.
-      Tracked as M12; single-shot IIO is fully functional.
-
-### M11k–l — Test coverage
-
-- [x] `transport::MockRoundTrip` — deterministic RoundTrip impl
-      with FIFO response queue + captured-request introspection.
-- [x] 85+ KUnit-for-Rust test cases (via `#[cfg(test)] mod tests`
-      + `mod client_tests` in every src/*.rs file):
-      - Wire layer: 35+ cases (CRC, framing, every opcode encode
-        + parse, fragmentation flags).
-      - Sequencer + CompletionTable: 10 cases.
-      - Client integration (MockRoundTrip): 50+ cases across all
-        5 subsystems covering happy path, edge cases, and errno
-        propagation.
-- [x] `tests/kunit/` — C-based KUnit tests for CRC-32C parity
-      against the firmware via `rpbridge_crc32c_slice` shim.
-- [x] `tests/umockdev/` — replay script + expected-children
-      manifest.
-- [x] `tests/e2e.md` — 10-section hardware checklist.
+| Firmware subsys | Linux binding      | Source          | Userspace path                       |
+| --------------- | ------------------ | --------------- | ------------------------------------ |
+| GPIO    (0x03)  | `gpio_chip`        | `src/gpio.c`    | `/dev/gpiochipN`, libgpiod           |
+| I²C     (0x01)  | `i2c_adapter`      | `src/i2c.c`     | `/dev/i2c-N`, i2c-tools              |
+| SPI     (0x02)  | `spi_controller`   | `src/spi.c`     | `/dev/spidevN.M`                     |
+| PWM     (0x04)  | `pwm_chip`         | `src/pwm.c`     | `/sys/class/pwm/pwmchipN/`           |
+| ADC     (0x05)  | `iio_dev` (DIRECT) | `src/iio.c`     | `/sys/bus/iio/devices/iio:deviceN/`  |
+| LED     (0x07)  | misc cdev          | `src/led.c`     | `/dev/rpbridge-led<N>`               |
+| DMX     (0x08)  | misc cdev          | `src/dmx.c`     | `/dev/rpbridge-dmx<N>`               |
+| OneWire (0x09)  | `w1_bus_master`    | `src/onewire.c` | `/sys/bus/w1/`                       |
+| I²S     (0x0A)  | misc cdev          | `src/i2s.c`     | `/dev/rpbridge-i2s<N>`               |
+| UART    (0x06)  | mainline `cdc_acm` | —               | `/dev/ttyACMN` (kernel-native)       |
+| CAN             | mainline `gs_usb`  | —               | `can0` SocketCAN (kernel-native)     |
 
 ## Validation status
 
-Honest state as of the current commit series:
+Honest state of the C driver:
 
-| Layer | Status | Notes |
-| --- | --- | --- |
-| Code structure | **✓ complete** | All M11 milestones landed in atomic commits. |
-| Post-audit bug sweep | **✓ applied** | Fat-pointer (5 modules), IIO channel array, SPI/PWM 6.18 API, new_mutex import, kernel baseline bump — all fixed. |
-| `make` against 6.18 kernel | **☐ not yet run** | No compile gate in CI; needs a kernel-headers-equipped build host. First run likely surfaces small delta issues. |
-| KUnit-for-Rust execution | **☐ not yet run** | Tests are written (85+) and syntactically consistent, but have not been executed. |
-| umockdev replay recording | **☐ missing** | `tests/umockdev/rpbridge-attach.umockdev` + `.ioctl` must be captured on real hardware (instructions in that directory's README). `replay.sh` fails with exit 1 ("missing fixture") until then. |
-| Real hardware attach | **☐ not tested** | The 10-section hardware checklist in `tests/e2e.md` is written; no section has been executed against rev-B. |
+- **Compile against Linux 7.0** — **✓ green in CI**.
+  `tools/build.sh driver` is in the GitHub Actions matrix; 0
+  warnings, 0 errors against the Ubuntu 26.04 LTS HWE kernel
+  headers.
+- **Compile against earlier 5.15+** — **☐ not verified.**
+  The auxiliary_bus baseline is 5.15 LTS; we only test against
+  7.0 in CI. Distros listed in `kernel-baseline/SUPPORT.md` are
+  best-effort for now.
+- **umockdev replay capture** — **☐ missing.**
+  `tests/umockdev/rpbridge-attach.umockdev` + `.ioctl` need to
+  be captured on real hardware once available. `replay.sh` fails
+  with exit 1 ("missing fixture") until then.
+- **Real hardware attach** — **☐ not tested.**
+  The 10-section hardware checklist in `tests/e2e.md` was written
+  against the Rust scaffold; the C driver inherits the same probe
+  sequence so it should still apply, but no section has been
+  executed against rev-B yet.
+- **Static analysis (checkpatch)** — **☐ not in CI.**
+  `make checkpatch` works locally; not yet a CI gate.
 
 **Before calling the driver "validated" the open rows need to flip
-to ✓.** Anyone with a 6.18+ kernel + RPBridge rev-B hardware can
+to ✓.** Anyone with a 5.15+ kernel + RPBridge rev-B hardware can
 close them.
 
-## M12 — Post-delivery refactors (pre-upstream-RFC)
+## Open work — priority order
 
-- [ ] **Compile-and-test gate in CI** — GitHub Actions workflow that
-      builds the driver against a 6.18-matching kernel tree and
-      runs KUnit via `kunit.py run` in QEMU. Blocks PRs on green.
-- [ ] **umockdev recording capture** — run `umockdev-record` on real
-      hardware, commit the resulting `.umockdev` + `.ioctl` files
-      so `replay.sh` actually runs in CI.
+### P1 — Validation gates
+
+- [ ] **umockdev recording capture** — run `umockdev-record` on
+      real hardware, commit the resulting `.umockdev` + `.ioctl`
+      files so `replay.sh` actually runs in CI.
 - [ ] **E2E hardware run** — execute `tests/e2e.md` end-to-end;
       record sign-off block at bottom with firmware SHA + driver
       SHA + observations.
-- [ ] **auxiliary_bus migration** — wrap each Child in
-      `auxiliary_device_{init,register,delete,uninit}` per ADR-0002.
-      Mechanical refactor; no behaviour change visible to userland.
-- [ ] **Async event/stream kthread** — consumes STREAM_DATA + EVENT
-      frames off the USB IN endpoint on a dedicated kernel thread.
-      Unblocks GPIO WATCH edge events and IIO triggered-buffer
-      streaming.
-- [ ] **GPIO IrqChip** — nested irq_chip on top of the gpio_chip
+- [ ] **kunit-in-QEMU** — port the `tests/kunit/kunit_probe.c`
+      stubs to plain C (today they're Rust-flavoured stubs left
+      over from the previous scaffold) and wire them as a CI gate.
+- [ ] **checkpatch in CI** — `tools/build.sh test` already calls
+      `make checkpatch`; surface its exit status to the workflow
+      so it gates the merge.
+
+### P2 — Subsystem feature parity gaps
+
+- [ ] **GPIO IrqChip** — nested `irq_chip` on top of the gpio_chip
       so `gpiomon` sees rising/falling edges with <5 ms latency.
+      Blocked on the async event-channel kthread (P3).
+- [ ] **GPIO mask atomic** — wire `set_multiple` / `get_multiple`
+      gpio_chip callbacks to RPBP `SET_MASK` / `GET_MASK` so multi-pin
+      operations get one round-trip instead of N.
 - [ ] **I²C SMBus + NOSTART** — advertise `I2C_FUNC_NOSTART` and
       coalesce write-then-read across `master_xfer`'s msg[] to fold
       repeated-start patterns into a single RPBP XFER.
-- [ ] **Safe-wrapper migration** — as each `kernel::<module>` binding
-      lands upstream, delete the corresponding `src/ffi/<module>.rs`
-      and rewire call sites. See ADR-0007 §Upstream-replacement
-      plan for the expected order.
+- [ ] **SPI manual CS** — expose RPBP `CS_ASSERT` / `CS_RELEASE`
+      through a vendor ioctl on `/dev/spidev` so userspace
+      multi-transaction flows can hold CS across multiple
+      transfer_one calls.
+- [ ] **IIO triggered buffer** — `iio_readdev -b ... -s ...`
+      streaming via `iio_buffer` + `iio_trigger`. Needs the async
+      event-channel kthread (P3) to consume STREAM_DATA frames
+      outside the request/response path.
 
-### M12 — PIO2 applet wire layers (LED + DMX, this commit)
+### P3 — Async event channel (unblocks P2 IRQ + streaming)
 
-Wire-only Rust clients for the new `0x07` LED and `0x08` DMX
-firmware subsystems. Layer 3 (kernel binding) is deferred until
-upstream R4L wrappers exist for addressable LEDs and DMX
-char-devices; for now the auxiliary children probe + log + retain
-the Client without registering a kernel device.
+- [ ] **Event/stream kthread** — dedicated kernel thread that
+      runs only when a subsystem has active subscribers; consumes
+      EVENT + STREAM_DATA frames off the bulk-IN endpoint
+      asynchronously. Reuses transport.c's frame validation but
+      adds a per-channel completion table.
 
-- [x] `src/led.rs` — wire builders/parsers for `GET_INFO`,
-      `CONFIGURE`, `WRITE`, `CLEAR`. `Client<T: RoundTrip>` rejects
-      oversize WRITE payloads before hitting the transport. Inline
-      tests + MockRoundTrip integration tests for every op.
-- [x] `src/dmx.rs` — wire builders/parsers for `GET_INFO`,
-      `SET_SLOTS`, `START`, `STOP`, `SET_BREAK`. `Client<T>`
-      mirrors the LED shape. Inline + MockRoundTrip tests.
-- [x] `LedChild::probe()` / `DmxChild::probe()` — placeholders
-      that call `GET_INFO` and log; both wired into
-      `core_driver::spawn_children` so the cap-map → child path is
-      exercised end-to-end.
-- [ ] **§R4L-LED-BINDINGS:** register a `kernel::led::Multicolor`
-      vtable once the upstream Rust wrapper lands. Map per-pixel
-      R/G/B (and W) brightness to `Client::write()` partial updates
-      so the multicolor sysfs surface stays cheap.
-- [ ] **char-device wrapper for DMX:** misc-class char device
-      (`/dev/rpbridge-dmxN`) that mmaps the 513-byte universe
-      buffer + ioctl(START)/ioctl(STOP), so OLA can plug a custom
-      plugin against a stable userspace ABI. Tracked behind
-      `kernel::miscdev` Rust binding stabilisation.
+### P4 — Subsystem feature additions
 
-### M12.2 — 1-Wire + I²S wire layers
+- [ ] **LED multicolor leds-class** — register a per-strip
+      `kernel/leds/leds-multicolor` device that maps the first
+      pixel's R/G/B to the standard sysfs brightness interface.
+      Keeps `/dev/rpbridge-ledN` for full-strip control; the
+      leds-class hook is for status-LED-style userspace tooling.
+- [ ] **DMX universe-mmap** — let userspace `mmap()` the 513-byte
+      universe buffer; bring the OLA "rpbridge" plugin online
+      against a stable mmapped ABI.
+- [ ] **I²S ASoC machine + codec** — full ASoC stack (machine +
+      codec + DAI link) so PCM-via-aplay works alongside the
+      raw-write misc cdev path.
 
-Wire-only Rust clients for the firmware's `0x09` ONEWIRE and `0x0A`
-I²S subsystems. Layer 3 (kernel binding) deferred until upstream
-R4L wrappers exist for w1 and ASoC.
+### P5 — Upstream-submission prep
 
-- [x] `src/onewire.rs` — wire builders/parsers for `GET_INFO`,
-      `RESET`, `WRITE`, `READ`, `TRIPLET`. `Client<T: RoundTrip>`
-      maps `RESET` to a `bool` (presence detected), `TRIPLET` to a
-      decoded `(id_bit, cmp_bit, dir)` triple for SEARCH ROM.
-- [x] `src/i2s.rs` — wire builders/parsers for `GET_INFO`,
-      `CONFIGURE`, `START`, `STOP`, `WRITE`. `Client<T>` rejects
-      unaligned (non-multiple-of-4) PCM payloads before hitting the
-      transport.
-- [x] `OnewireChild::probe()` and `I2sChild::probe()` — placeholders
-      that call `GET_INFO` and log; both wired into
-      `core_driver::spawn_children`.
-- [x] Inline + MockRoundTrip integration tests for every op,
-      including SEARCH-ROM triplet decoding and PCM frame
-      validation.
-- [ ] **§R4L-W1-BINDINGS:** register a `kernel::w1::Master` vtable
-      once the upstream Rust wrapper lands. Map `reset_bus()` →
-      `Client::reset()`, `read_block()` / `write_block()` → bytes
-      ops, `search()` → SEARCH ROM via repeated TRIPLET.
-- [ ] **ASoC machine + codec driver for I²S TX:** writing a full
-      ASoC stack (machine + codec + DAI link) is heavy; a minimal
-      misc-class char device that accepts raw PCM via `write()` is
-      a v1.5 interim option that gives ALSA-via-aplay shape without
-      the full ASoC scaffolding.
-
-## Upstream-submission prep (future M13)
-
-- [ ] `kernel-baseline/` bump to the R4L tree that provides all
-      bindings we currently shim.
-- [ ] Move `src/ffi/shims.c` content into safe Rust callers once
-      the bindings allow it; `shims.c` should shrink to zero.
-- [ ] Kbuild: ensure `rpbridge.ko` compiles in-tree under
-      `drivers/usb/misc/rpbridge/`.
-- [ ] Checkpatch + `sphinx-build Documentation/` clean.
-- [ ] RFC post to `linux-usb@` / `rust-for-linux@`.
+- [ ] **In-tree builds** — Kbuild `rpbridge.ko` compiles in-tree
+      under `drivers/usb/misc/rpbridge/`.
+- [ ] **Checkpatch clean** — pass `scripts/checkpatch.pl --strict`
+      on every source file (CI gate from P1).
+- [ ] **`Documentation/` build** — `sphinx-build` clean (driver
+      gets a `Documentation/usb/rpbridge.rst`).
+- [ ] **RFC post** — `linux-usb@`. The auxiliary-bus child split
+      keeps the per-subsystem maintainers happy reviewing only
+      their slice.

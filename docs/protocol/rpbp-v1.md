@@ -394,9 +394,9 @@ whose MAJOR differs from theirs.
 
 ## 17. Reference implementations
 
-- Canonical Rust (userspace): [`userspace/rpbridge-protocol/src/lib.rs`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/userspace/rpbridge-protocol/src/lib.rs)
+- Userspace (Rust, canonical): [`userspace/rpbridge-protocol/src/lib.rs`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/userspace/rpbridge-protocol/src/lib.rs)
 - Firmware (C): [`firmware/src/rpbp/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/firmware/src/rpbp)
-- Kernel (Rust): [`driver/src/rpbp.rs`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/src/rpbp.rs)
+- Kernel driver (C): [`driver/src/rpbp_framing.c`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/src/rpbp_framing.c) + [`driver/src/rpbp_crc32c.c`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/src/rpbp_crc32c.c)
 
 All three are exercised by the shared golden-vector corpus under
 [`tests/golden/`](https://github.com/bauer-group/EMB-USBMultiBusBridge/tree/main/tests/golden).
