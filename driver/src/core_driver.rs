@@ -96,16 +96,29 @@ pub(crate) struct Inner {
 }
 
 /// Per-device handle the aux children receive via `Arc<RpbridgeState>`.
+///
+/// `#[pin_data]` enables `pin_init!`-driven construction; both
+/// fields are mutexes that need stable addresses for their
+/// internal waiter lists, so they are tagged `#[pin]`.
+#[pin_data]
 pub(crate) struct RpbridgeState {
-    pub inner:     Mutex<Inner>,
-    pub transport: Mutex<TransportState>,
+    #[pin] pub inner:     Mutex<Inner>,
+    #[pin] pub transport: Mutex<TransportState>,
 }
 
 impl RpbridgeState {
+    /// Construct in pinned form. R4L 7.0's `new_mutex!` no longer
+    /// produces a fully-formed `Lock<T, MutexBackend>` value — it
+    /// produces an `impl PinInit<Lock<T, MutexBackend>>` that has to
+    /// be applied at a stable memory address. The struct's other
+    /// fields can stay regular initialisers, but the mutex fields
+    /// have to use the `<-` operator inside a `pin_init!` block so
+    /// the lock acquires its waiter list at the same address it'll
+    /// live at for its lifetime.
     pub(crate) fn new() -> Result<Arc<Self>> {
-        Ok(Arc::new(
-            Self {
-                inner: new_mutex!(
+        Arc::pin_init(
+            pin_init!(Self {
+                inner <- new_mutex!(
                     Inner {
                         ctrl_seq:    Sequencer::new(),
                         completions: CompletionTable::new(),
@@ -113,13 +126,13 @@ impl RpbridgeState {
                     },
                     "rpbridge.inner"
                 ),
-                transport: new_mutex!(
+                transport <- new_mutex!(
                     TransportState { intf: None, bulk_in: None, bulk_out: None },
                     "rpbridge.transport"
                 ),
-            },
+            }),
             GFP_KERNEL,
-        )?)
+        )
     }
 }
 
@@ -351,7 +364,19 @@ fn clone_caps_for_spawn(caps: &Capabilities) -> KVec<(KVec<u8>, u16)> {
 const RPBRIDGE_USB_VID: u16 = 0x1209;   // pid.codes Open Hardware VID
 const RPBRIDGE_USB_PID: u16 = 0xFFFE;   // TESTING-RANGE — replace before release
 
-pub(crate) struct RpbridgeDriver;
+/// Per-instance driver state. R4L 7.0 makes the `Driver` impl's
+/// `Self` type the per-device storage that the kernel pins in place;
+/// the runtime hands us back a `Pin<&Self>` on disconnect. We hold
+/// the actual protocol/transport state in an Arc so the auxiliary
+/// children can clone it freely without touching the pinned location.
+///
+/// `#[pin_data]` is required by `try_pin_init!` to derive the
+/// projection helpers (even when no field is itself pinned — the
+/// macro plumbing still wants the trait to exist).
+#[pin_data]
+pub(crate) struct RpbridgeDriver {
+    state: Arc<RpbridgeState>,
+}
 
 // kernel::usb::Driver in 7.0 has dropped the `type Data` associated
 // type — driver-private state is now wired up via the kernel's
@@ -380,74 +405,73 @@ impl kernel::usb::Driver for RpbridgeDriver {
         ]);
 
     fn probe(
-        intf: &kernel::usb::Interface,
-        _id_info: Option<&Self::IdInfo>,
-    ) -> Result<Arc<RpbridgeState>> {
-        pr_info!("rpbridge: probe()\n");
-
-        let state = RpbridgeState::new()?;
-
-        // 1. Grab the raw interface pointer.
-        //
-        // In R4L 6.18 `kernel::usb::Interface` is a
-        // `#[repr(transparent)]` wrapper around
-        // `Opaque<bindings::usb_interface>`, which is itself
-        // `repr(transparent)` around `UnsafeCell<MaybeUninit<T>>`.
-        // The composition is ABI-identical to `*mut usb_interface`,
-        // so a pointer cast is sound and avoids the `transmute`
-        // footgun of silently changing its meaning if the layout
-        // evolves. The assumption lives in one place; any R4L
-        // upstream change that breaks it breaks this cast at the
-        // call site and nowhere else.
-        //
-        // SAFETY: the pointer cast relies only on the documented
-        // transparent representation above; no bytes are
-        // reinterpreted.
-        let raw_intf: *mut ffi::bindings::usb_interface =
-            intf as *const kernel::usb::Interface
-                 as *const ffi::bindings::usb_interface
-                 as *mut _;
-        let intf_wrapper = unsafe { ffi::usb::Interface::from_raw(raw_intf) };
-
-        // 2. Locate the RPBP bulk-IN / bulk-OUT pair.
-        let (bulk_in, bulk_out) = intf_wrapper.rpbp_pair()
-            .map_err(|_| kernel::error::code::ENODEV)?;
-
-        // 3. Install them in TransportState.
-        {
-            let mut g = state.transport.lock();
-            g.intf     = Some(intf_wrapper);
-            g.bulk_in  = Some(bulk_in);
-            g.bulk_out = Some(bulk_out);
-        }
-
-        // 4. Session init + capability fetch.
-        do_hello(&state).map_err(kernel::error::Error::from_errno)?;
-        do_fetch_capabilities(&state).map_err(kernel::error::Error::from_errno)?;
-
-        // 5. Spawn aux_device children for the subsystems the device
-        //    advertises on the vendor interface.
-        let _ = spawn_children(state.clone())
-            .map_err(kernel::error::Error::from_errno)?;
-
-        pr_info!("rpbridge: probe complete\n");
-        Ok(state)
+        intf: &kernel::usb::Interface<kernel::device::Core>,
+        _dev_id: &kernel::usb::DeviceId,
+        _id_info: &Self::IdInfo,
+    ) -> impl PinInit<Self, kernel::error::Error> {
+        // Eagerly drive the entire attach sequence (allocate state,
+        // wrap the interface, find the bulk pair, do_hello,
+        // do_fetch_capabilities, spawn_children) — anything that can
+        // fail must do so BEFORE the kernel commits to instantiating
+        // RpbridgeDriver in its allocation slot. We hand the kernel
+        // a closure that produces either the populated Self or the
+        // first error encountered.
+        try_pin_init!(Self {
+            state: probe_attach(intf)?,
+        }? kernel::error::Error)
     }
 
-    fn disconnect(_intf: &kernel::usb::Interface) {
+    fn disconnect(_intf: &kernel::usb::Interface<kernel::device::Core>,
+                  _this:  Pin<&Self>)
+    {
         pr_info!("rpbridge: interface disconnected\n");
         // auxiliary_device children are unregistered in each Child's
         // Drop impl (see gpio/i2c/spi/pwm/iio). TransportState goes
         // away when the last Arc reference drops — the kernel's USB
         // core guarantees no further bulk transfers after this
-        // callback returns.
-        //
-        // The previous signature carried `_data: Arc<RpbridgeState>`
-        // tied to the dropped `type Data`; in 7.0 the runtime stashes
-        // the per-driver state via usb_set_intfdata, retrieved by the
-        // R4L core before invoking this method, then released for us
-        // automatically.
+        // callback returns. `Pin<&Self>` is the 7.0 contract: the
+        // runtime keeps the driver instance pinned at one address
+        // for its full lifetime so any self-referential locks the
+        // type contains stay valid.
     }
+}
+
+/// Drives the runtime portion of probe() that can fail. Lives
+/// outside the trait impl so the `try_pin_init!` macro inside probe
+/// stays small and the error propagation reads as a single `?`.
+fn probe_attach(intf: &kernel::usb::Interface<kernel::device::Core>)
+    -> Result<Arc<RpbridgeState>, kernel::error::Error>
+{
+    pr_info!("rpbridge: probe()\n");
+
+    let state = RpbridgeState::new()?;
+
+    // SAFETY: kernel::usb::Interface is repr(transparent) over
+    // bindings::usb_interface (verified by R4L 7.0 source). The
+    // pointer cast preserves provenance; no bytes are reinterpreted.
+    let raw_intf: *mut ffi::bindings::usb_interface =
+        intf as *const kernel::usb::Interface<kernel::device::Core>
+             as *const ffi::bindings::usb_interface
+             as *mut _;
+    let intf_wrapper = unsafe { ffi::usb::Interface::from_raw(raw_intf) };
+
+    let (bulk_in, bulk_out) = intf_wrapper.rpbp_pair()
+        .map_err(|_| kernel::error::code::ENODEV)?;
+
+    {
+        let mut g = state.transport.lock();
+        g.intf     = Some(intf_wrapper);
+        g.bulk_in  = Some(bulk_in);
+        g.bulk_out = Some(bulk_out);
+    }
+
+    do_hello(&state).map_err(kernel::error::Error::from_errno)?;
+    do_fetch_capabilities(&state).map_err(kernel::error::Error::from_errno)?;
+    let _ = spawn_children(state.clone())
+        .map_err(kernel::error::Error::from_errno)?;
+
+    pr_info!("rpbridge: probe complete\n");
+    Ok(state)
 }
 
 /* ───── KUnit-C symbol export for CRC parity test ──────────────────── */
