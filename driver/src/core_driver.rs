@@ -125,7 +125,13 @@ impl RpbridgeState {
 
 /* ───── RoundTrip — synchronous request/response on control ─────────── */
 
-impl RoundTrip for Arc<RpbridgeState> {
+// Implemented on the concrete type, not on `Arc<RpbridgeState>`.
+// Subsystem clients hold `Arc<T>` internally and dispatch the call via
+// auto-deref, so the trait method must be findable when looking up on
+// `&T`. Putting it on `Arc<T>` hides the impl from generic
+// `Client<T: RoundTrip>` code — exactly the cascade that broke ~30
+// call sites in gpio/i2c/spi/pwm/iio/led/dmx/onewire/i2s.
+impl RoundTrip for RpbridgeState {
     fn round_trip(&self, channel: u16, request: &[u8])
         -> Result<(rpbp::Status, KVec<u8>), i32>
     {

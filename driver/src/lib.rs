@@ -46,14 +46,29 @@ mod onewire;
 mod i2s;
 
 /// Generic errors this driver maps to/from kernel `Result<T>`.
+///
+/// The kernel binding's `kernel::error::*` constants are the canonical
+/// source for these values, but they ship as `kernel::error::Error`
+/// types (not bare `i32`). The wire-protocol layer needs to compare
+/// against numeric errno codes, so we mirror the small subset we use
+/// as plain `i32` constants and keep the values in lock-step with
+/// `<linux/errno.h>` (also matched by glibc/musl headers).
 #[allow(dead_code)]
 pub(crate) mod errno {
-    pub const EINVAL: i32 = 22;
-    pub const EIO: i32 = 5;
-    pub const ENODEV: i32 = 19;
-    pub const ENOMEM: i32 = 12;
-    pub const EPROTO: i32 = 71;
-    pub const ETIMEDOUT: i32 = 110;
+    pub const EPERM:      i32 = 1;
+    pub const ENOENT:     i32 = 2;
+    pub const EIO:        i32 = 5;
+    pub const EAGAIN:     i32 = 11;
+    pub const ENOMEM:     i32 = 12;
+    pub const EBUSY:      i32 = 16;
+    pub const ENODEV:     i32 = 19;
+    pub const EINVAL:     i32 = 22;
+    pub const EPROTO:     i32 = 71;
+    pub const EOVERFLOW:  i32 = 75;
+    pub const EMSGSIZE:   i32 = 90;
+    pub const ENOTSUP:    i32 = 95;
+    pub const ETIMEDOUT:  i32 = 110;
+    pub const ECANCELED:  i32 = 125;
 }
 
 kernel::module_usb_driver! {
