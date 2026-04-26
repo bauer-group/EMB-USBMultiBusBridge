@@ -2,9 +2,13 @@
 #
 # Cargo workspace for the RPBridge userspace tree.
 #
-# Three member crates:
-#   - rpbridge-protocol  : no_std-capable RPBP v1 framing library;
-#                          shared ground truth for every binding.
+# Member crates:
+#   - rpbridge-protocol  : no_std-capable RPBP v1 framing + per-
+#                          subsystem wire builders/parsers; shared
+#                          ground truth for every userspace binding.
+#                          Covers all 11 RPBP subsystems (sys, gpio,
+#                          i2c, spi, pwm, adc, uart, led, dmx,
+#                          onewire, i2s).
 #   - rpbridge           : high-level client (libusb / nusb backend,
 #                          capability discovery, per-bus handles).
 #   - rpbridge-ctl       : the user-facing CLI.
@@ -29,7 +33,12 @@ repository    = "https://github.com/bauer-group/EMB-USBMultiBusBridge"
 homepage      = "https://rpbridge.org"
 readme        = "README.md"
 categories    = ["embedded", "hardware-support"]
-keywords      = ["usb", "rp2350", "i2c", "spi", "can"]
+# crates.io caps the keywords list at 5 entries — pick the highest-
+# value search terms. The full subsystem list is in the per-crate
+# description and the README; "rp2350" + "usb" cover discovery, the
+# remaining three pick the most common bus types developers reach
+# for first.
+keywords      = ["usb", "rp2350", "i2c", "spi", "gpio"]
 
 [workspace.dependencies]
 # Local members

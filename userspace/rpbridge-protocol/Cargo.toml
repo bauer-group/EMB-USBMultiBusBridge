@@ -2,7 +2,7 @@
 
 [package]
 name          = "rpbridge-protocol"
-description   = "RPBP v1 — RPBridge USB wire-format library (no_std-capable)"
+description   = "RPBP v1 — RPBridge USB wire-format library; framing + CRC-32C + per-subsystem builders/parsers for sys, gpio, i2c, spi, pwm, adc, uart, led, dmx, onewire, i2s. no_std-capable."
 version       = { workspace = true }
 edition       = { workspace = true }
 rust-version  = { workspace = true }
@@ -11,7 +11,7 @@ authors       = { workspace = true }
 repository    = { workspace = true }
 readme        = "README.md"
 categories    = ["embedded", "encoding", "no-std"]
-keywords      = ["rpbridge", "rpbp", "protocol", "usb"]
+keywords      = ["rpbridge", "rpbp", "protocol", "usb", "no-std"]
 
 [features]
 default  = ["std"]
