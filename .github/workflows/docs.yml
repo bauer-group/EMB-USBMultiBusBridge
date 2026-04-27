@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-name: docs
+name: 📚 Deploy Docs
 
 on:
   push:
@@ -9,38 +9,35 @@ on:
       - 'README.md'
       - 'CHANGELOG.md'
       - '.github/workflows/docs.yml'
-  pull_request:
-    paths:
-      - 'docs/**'
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
-
-concurrency:
-  group: docs-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: mkdocs build --strict
-    runs-on: ubuntu-24.04
+    name: 🏗️ Build
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Set up Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
           cache: pip
 
-      - name: Install mkdocs-material + plugins
+      - name: 📦 Install mkdocs-material + plugins
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
@@ -50,13 +47,27 @@ jobs:
             mike>=2.1 \
             pymdown-extensions>=10.8
 
-      - name: Build
+      - name: 🏗️ Build site
         working-directory: docs
         run: mkdocs build --strict
 
-      - name: Upload site as artefact
-        uses: actions/upload-artifact@v4
+      - name: ⚙️ Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: 📤 Upload Pages artefact
+        uses: actions/upload-pages-artifact@v4
         with:
-          name: site
           path: site
-          retention-days: 14
+
+  deploy:
+    name: 🚀 Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

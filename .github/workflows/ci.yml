@@ -8,8 +8,6 @@
 # with a shared GHA layer cache and runs `tools/build.sh <component>`
 # inside it. That keeps the local-developer path and the CI path
 # byte-identical — same Dockerfile, same script, same flags.
-#
-# Replaces the previous firmware.yml / driver.yml / userspace.yml split.
 
 name: 🐳 CI
 
