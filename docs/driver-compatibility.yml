@@ -2,29 +2,51 @@
 #
 # Rendered into the run summary by the containerized-embedded-build
 # reusable when called with `emit-driver-compat-matrix: true`.
+# Authoritative source: driver/kernel-baseline/SUPPORT.md.
 #
-# Schema (all fields optional; missing fields render as "—"):
+# Schema (all fields optional; missing fields render as "-"):
 #   compatibility:
-#     - kernel:   '<uname-r-style version>'
-#       rustc:    '<distro rustc version paired to that kernel>'
-#       r4l_api:  '<Rust-for-Linux API surface tag>'
-#       status:   '<short freeform status, see legend>'
-#       notes:    '<freeform — link to TODO entry, drift summary, …>'
+#     - kernel: '<uname-r-style version or LTS line>'
+#       distro: '<distribution(s) shipping that kernel>'
+#       status: '<short freeform — see legend>'
+#       notes:  '<freeform>'
 #
 # Status legend:
-#   "fmt only"            rustfmt advisory passes; module link not attempted.
-#   "fmt + module link"   rustfmt clean AND `make modules` produces a .ko.
-#   "API drift (M12)"     R4L API in this kernel doesn't match driver source.
+#   "supported (minimum)"  Lower bound of supported kernels. Required ABIs
+#                          + subsystems are present; building works.
+#   "supported"            Verified-buildable, not part of the CI matrix.
+#   "primary CI target"    Re-compiled on every PR by GitHub Actions.
+#   "expected OK"          Future kernels — Linux's stable in-kernel ABI
+#                          carries the C driver forward without per-version
+#                          porting effort.
+#
+# The driver is **C-only** since the v0.1.0 rewrite (ADR-0003 Amendment
+# 2026-04-26). There is no rustc / Rust-for-Linux / R4L-API column —
+# kernel-version drift in those areas was the entire reason for the C
+# pivot.
 
 compatibility:
-  - kernel:   '6.18.0-12-generic'
-    rustc:    '1.86.0'
-    r4l_api:  'usb::Driver v7.0'
-    status:   'fmt + module link (in progress)'
-    notes:    'Active development target — see driver/TODO.md M12.'
+  - kernel: '5.15.30+ LTS'
+    distro: 'Ubuntu 22.04 LTS HWE'
+    status: 'supported (minimum)'
+    notes:  'auxiliary_bus baseline. Stock 5.15.0 had a PROBE-DEFER regression — HWE 5.15.30+ is the actual minimum.'
 
-  - kernel:   '6.19.x (next)'
-    rustc:    'tbd'
-    r4l_api:  'usb::Driver v7.1 (probe sig change expected)'
-    status:   'API drift (M13)'
-    notes:    'Will require a probe-signature port; tracked in driver/TODO.md M13.'
+  - kernel: '6.1 / 6.6 / 6.8 / 6.11 / 6.12 LTS'
+    distro: 'Debian 12, Ubuntu 24.04 LTS HWE, Debian 13 Trixie'
+    status: 'supported'
+    notes:  'Compiles cleanly. Not part of the CI matrix; stable via the auxiliary_bus + standard subsystem ABIs.'
+
+  - kernel: '6.18+'
+    distro: 'Fedora 42+, Arch rolling'
+    status: 'supported'
+    notes:  'Compiles cleanly against current mainline.'
+
+  - kernel: '7.0 LTS'
+    distro: 'Ubuntu 26.04 LTS HWE (default)'
+    status: 'primary CI target'
+    notes:  'Re-compiled on every PR by the CI workflow against linux-headers-generic 7.0.0-14.'
+
+  - kernel: '8.x and beyond'
+    distro: 'future'
+    status: 'expected OK'
+    notes:  "Linux's stable in-kernel ABI guarantee carries C drivers forward across major versions. No preemptive gating; CI surfaces any in-tree breaks."
