@@ -72,10 +72,10 @@ under the canonical kernel interface for that bus.
 | PWM              | `/sys/class/pwm/pwmchipN`        | sysfs PWM, kernel pwm-client drivers                        |
 | ADC (IIO)        | `/sys/bus/iio/devices/…`         | `iio_info`, `iio_readdev`, `libiio`, Grafana                |
 | CAN 2.0B         | `can0` (SocketCAN)               | `can-utils`, `python-can`, `SavvyCAN`                       |
-| WS2812 / SK6812  | RPBP `LED` subsystem (vendor IF) | `rpbridge-ctl led`, `python-rpbridge`                       |
+| WS2812 / SK6812  | RPBP `LED` subsystem (vendor IF) | `rpbridge-ctl led`                                          |
 | DMX-512 (TX)     | RPBP `DMX` subsystem             | `ola_dev_info`, `rpbridge-ctl dmx`                          |
 | 1-Wire           | `/sys/bus/w1/devices/…`          | `w1-gpio` compatible (`w1_therm`, etc.)                     |
-| I²S TX           | RPBP `I²S` subsystem             | `rpbridge-ctl i2s`, `python-rpbridge`                       |
+| I²S TX           | RPBP `I²S` subsystem             | `rpbridge-ctl i2s`                                          |
 
 OTA firmware update runs through the RP2350 ROM-BOOTSEL / UF2
 mechanism — no custom bootloader, no signing ceremony to start
