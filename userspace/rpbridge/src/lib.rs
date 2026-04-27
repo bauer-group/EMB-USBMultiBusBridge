@@ -42,12 +42,16 @@ pub enum Error {
 /// Short-hand result alias.
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// `RPBridge`-specific USB VID/PID placeholder. Replace with the real
-/// allocation before the first public release.
-pub const DEFAULT_VID: u16 = 0x1209;
-/// `RPBridge`-specific USB VID/PID placeholder. Replace with the real
-/// allocation before the first public release.
-pub const DEFAULT_PID: u16 = 0xFFFE;
+/// `RPBridge` production USB Vendor ID — assigned to BAUER GROUP
+/// on 2026-04-27. Lock-step partners that must carry the same
+/// value: `firmware/src/usb/usb_descriptors.c` (`RPBRIDGE_USB_VID`),
+/// `driver/src/rpbp.h` (`RPBRIDGE_USB_VID`), and
+/// `driver/udev/70-rpbridge.rules` (`ATTRS{idVendor}`).
+pub const DEFAULT_VID: u16 = 0x0545;
+
+/// `RPBridge` production USB Product ID — assigned to BAUER GROUP
+/// on 2026-04-27. Lock-step partners: see [`DEFAULT_VID`].
+pub const DEFAULT_PID: u16 = 0x0101;
 
 /// Handle to a connected `RPBridge` device.
 pub struct Device {
