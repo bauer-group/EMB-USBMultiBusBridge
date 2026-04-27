@@ -609,9 +609,18 @@ Tracking lives here so we don't ship a board with a placeholder.
       and udev rules on 2026-04-27. See
       [`docs/usb-vid-pid.md`](../docs/usb-vid-pid.md) for the
       lock-step list and interface-class layout.
-- [ ] **bcdDevice** — bump from `0x0100` to mark first
-      production-ID release.
-- [ ] **udev rules + umockdev recording** — regenerate the
-      umockdev fixture (rules already match the production VID)
-      against real hardware so the replay-CI step picks up
-      0545:0101 traffic.
+- [x] **bcdDevice** — closed without a bump. The convention is
+      "couple to RPBP wire-protocol MAJOR version" (RPBP v1 →
+      `0x0100`), not "bump per production-ID release". Coupling
+      to firmware semver would force Windows (which keys on
+      `REV_xxxx`) to re-install drivers + re-pair applications
+      on every patch release. The constant now lives as
+      `RPBRIDGE_BCD_DEVICE` in `firmware/src/usb/usb_descriptors.c`
+      with the rationale inline. Next bump: when RPBP rolls to v2.
+- [ ] **udev rules + umockdev recording** — udev rules already
+      match the production VID `0545:0101`. The umockdev fixture
+      is the only piece that still carries pre-production-VID
+      traffic. Refresh requires a recording session against real
+      hardware (see
+      [`driver/tests/umockdev/README.md`](../driver/tests/umockdev/README.md));
+      can't be done at the desk. Bench-blocked.

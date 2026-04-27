@@ -60,6 +60,7 @@
 
 #define RPBRIDGE_USB_VID    0x0545   /* BAUER GROUP — production VID */
 #define RPBRIDGE_USB_PID    0x0101   /* RPBridge — production PID    */
+#define RPBRIDGE_BCD_DEVICE 0x0100u  /* RPBP wire-protocol major v1  */
 
 #define RPBRIDGE_USB_BCD    0x0210   /* USB 2.1 to enable BOS / MS OS 2.0 */
 
@@ -78,7 +79,16 @@ tusb_desc_device_t const desc_device = {
 
     .idVendor           = RPBRIDGE_USB_VID,
     .idProduct          = RPBRIDGE_USB_PID,
-    .bcdDevice          = 0x0100,
+    /*
+     * bcdDevice is intentionally coupled to the RPBP wire-protocol
+     * MAJOR version, NOT to the firmware semver. RPBP v1 → 0x0100;
+     * RPBP v2 (future, breaking wire-format change) would step to
+     * 0x0200. Coupling to firmware patches would force Windows
+     * (which keys on `REV_xxxx`) to re-install drivers + re-pair
+     * applications on every bug-fix release — exactly the opposite
+     * of what bcdDevice is for.
+     */
+    .bcdDevice          = RPBRIDGE_BCD_DEVICE,
 
     .iManufacturer      = 0x01,
     .iProduct           = 0x02,
