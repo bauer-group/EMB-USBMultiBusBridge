@@ -103,15 +103,27 @@ uint8_t const *tud_descriptor_device_cb(void)
 
 /* ───── Configuration descriptor ─────────────────────────────────────── */
 
+/* Interface-number enum. Each CDC slot is conditional on the board
+ * header's HAVE_* flag — bare-board variants without an on-board
+ * transceiver simply don't enumerate the corresponding CDC, and
+ * TUSB renumbers the survivors starting from 0 in descriptor order.
+ * The TTL UART0 CDC is unconditional (it's the bare-wire path on
+ * UART0 hardware that always exists). */
 enum {
+#if RPBRIDGE_HAVE_RS232_PHY
     ITF_CDC_0     = 0,     /* UART 1 RS232 (MAX3232 via UART0 HW)        */
     ITF_CDC_0_DATA,
+#endif
+#if RPBRIDGE_HAVE_RS485_PHY
     ITF_CDC_1,             /* UART 1 RS485 (SN65HVD72 via UART0 HW)      */
     ITF_CDC_1_DATA,
+#endif
     ITF_CDC_2,             /* UART 1 TTL   (direct 3.3 V via UART0 HW)   */
     ITF_CDC_2_DATA,
+#if RPBRIDGE_HAVE_PIO_UART
     ITF_CDC_3,             /* UART 2 TTL   (PIO-UART #2)                 */
     ITF_CDC_3_DATA,
+#endif
 #ifdef RPBRIDGE_DEBUG_CDC
     ITF_CDC_4,             /* Debug Log    (printf() sink, optional)     */
     ITF_CDC_4_DATA,
@@ -152,38 +164,42 @@ enum {
 #define EPNUM_CDC_4_OUT     0x0C
 #define EPNUM_CDC_4_IN      0x8C
 
-#define RPB_CDC_COUNT       5u
 #define ISTR_CDC_4          8u
 #define ISTR_VENDOR_CTRL    9u
 #define ISTR_VENDOR_CAN     10u
 #else
-#define RPB_CDC_COUNT       4u
 #define ISTR_VENDOR_CTRL    8u
 #define ISTR_VENDOR_CAN     9u
 #endif
 
 #define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN +                \
-                             TUD_CDC_DESC_LEN * RPB_CDC_COUNT +   \
+                             TUD_CDC_DESC_LEN * CFG_TUD_CDC +     \
                              TUD_VENDOR_DESC_LEN * 2)
 
 uint8_t const desc_fs_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_TOTAL, 0, CONFIG_TOTAL_LEN, 0x80 /* bus-powered */, 250 /* 500 mA */),
 
-    /* CDC #0 — UART 1 RS232 */
+#if RPBRIDGE_HAVE_RS232_PHY
+    /* CDC #0 — UART 1 RS232 (gated on RPBRIDGE_HAVE_RS232_PHY) */
     TUD_CDC_DESCRIPTOR(ITF_CDC_0, 4 /* iInterface */, EPNUM_CDC_0_NOTIF, 8,
                        EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
+#endif
 
-    /* CDC #1 — UART 1 RS485 */
+#if RPBRIDGE_HAVE_RS485_PHY
+    /* CDC #1 — UART 1 RS485 (gated on RPBRIDGE_HAVE_RS485_PHY) */
     TUD_CDC_DESCRIPTOR(ITF_CDC_1, 5 /* iInterface */, EPNUM_CDC_1_NOTIF, 8,
                        EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
+#endif
 
-    /* CDC #2 — UART 1 TTL */
+    /* CDC #2 — UART 1 TTL (always present where UART0 GPIOs are wired) */
     TUD_CDC_DESCRIPTOR(ITF_CDC_2, 6 /* iInterface */, EPNUM_CDC_2_NOTIF, 8,
                        EPNUM_CDC_2_OUT, EPNUM_CDC_2_IN, 64),
 
-    /* CDC #3 — UART 2 TTL (PIO-UART) */
+#if RPBRIDGE_HAVE_PIO_UART
+    /* CDC #3 — UART 2 TTL (PIO-UART, gated on RPBRIDGE_HAVE_PIO_UART) */
     TUD_CDC_DESCRIPTOR(ITF_CDC_3, 7 /* iInterface */, EPNUM_CDC_3_NOTIF, 8,
                        EPNUM_CDC_3_OUT, EPNUM_CDC_3_IN, 64),
+#endif
 
 #ifdef RPBRIDGE_DEBUG_CDC
     /* CDC #4 — Debug Log (printf sink, build-gated) */

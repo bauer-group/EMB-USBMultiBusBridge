@@ -227,6 +227,17 @@ pico_board_cmake_set_default(PICO_FLASH_SIZE_BYTES, (2 * 1024 * 1024))
 #ifndef RPBRIDGE_HAVE_RS485_PHY
 #define RPBRIDGE_HAVE_RS485_PHY  1
 #endif
+
+/* Base CDC-ACM count exposed via USB. Computed from the HAVE_*
+ * flags so dropping a transceiver bank automatically drops its CDC
+ * from the descriptor (and TUSB renumbers the survivors). The TTL
+ * UART0 CDC is always present where UART0 GPIOs are wired out;
+ * RPBRIDGE_DEBUG_CDC adds one more on top. */
+#define RPBRIDGE_BASE_CDC_COUNT  ( \
+        (RPBRIDGE_HAVE_RS232_PHY ? 1 : 0) + \
+        (RPBRIDGE_HAVE_RS485_PHY ? 1 : 0) + \
+        1 /* UART0 TTL */ + \
+        (RPBRIDGE_HAVE_PIO_UART  ? 1 : 0))
 #ifndef RPBRIDGE_RS485_DE_PIN
 #define RPBRIDGE_RS485_DE_PIN  6
 #endif

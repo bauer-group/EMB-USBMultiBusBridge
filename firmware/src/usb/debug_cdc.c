@@ -29,7 +29,11 @@
 #include "pico/stdio/driver.h"
 #include "tusb.h"
 
-#define RPBRIDGE_DEBUG_CDC_INDEX 4u
+/* The debug CDC sits immediately after the base CDC slots — its TUSB
+ * index is therefore RPBRIDGE_BASE_CDC_COUNT (variant-driven via the
+ * board header). On rev-B with all transceiver phys this is 4; on
+ * a bare Pico 2 (no on-board RS232/RS485 phys) it's 2. */
+#define RPBRIDGE_DEBUG_CDC_INDEX  ((uint8_t)RPBRIDGE_BASE_CDC_COUNT)
 
 static void debug_cdc_out_chars(const char *buf, int length)
 {

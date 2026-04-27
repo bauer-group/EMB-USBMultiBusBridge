@@ -60,10 +60,34 @@
 
 /* ───── CDC index layout ─────────────────────────────────────────────── */
 
-#define CDC_ITF_UART1_RS232    0u
-#define CDC_ITF_UART1_RS485    1u
-#define CDC_ITF_UART1_TTL      2u
-#define CDC_ITF_UART2_TTL      3u
+/* CDC slot indices, computed from the board's HAVE_* flags so they
+ * mirror the descriptor in usb_descriptors.c. TUSB numbers CDCs in
+ * descriptor order starting at 0 — drop a transceiver bank in the
+ * board header and the survivors slide down automatically.
+ *
+ * Each CDC_ITF_* macro is *only defined* when its underlying hardware
+ * is present; downstream switch/case + loop bodies must guard their
+ * uses with the matching #if RPBRIDGE_HAVE_*. */
+#if RPBRIDGE_HAVE_RS232_PHY
+#  define CDC_ITF_UART1_RS232    0u
+#  define _RPB_CDC_AFTER_RS232   1u
+#else
+#  define _RPB_CDC_AFTER_RS232   0u
+#endif
+
+#if RPBRIDGE_HAVE_RS485_PHY
+#  define CDC_ITF_UART1_RS485    (_RPB_CDC_AFTER_RS232)
+#  define _RPB_CDC_AFTER_RS485   (_RPB_CDC_AFTER_RS232 + 1u)
+#else
+#  define _RPB_CDC_AFTER_RS485   _RPB_CDC_AFTER_RS232
+#endif
+
+/* TTL is unconditional — UART0 GPIOs are always exposed. */
+#define CDC_ITF_UART1_TTL        (_RPB_CDC_AFTER_RS485)
+
+#if RPBRIDGE_HAVE_PIO_UART
+#  define CDC_ITF_UART2_TTL      (_RPB_CDC_AFTER_RS485 + 1u)
+#endif
 
 /* Which of CDC 0..2 currently owns UART0 HW. -1 = none (phy = OFF). */
 #define NO_ACTIVE_UART0_CDC    (-1)
@@ -108,8 +132,12 @@ void cdc_glue_init(void)
 static enum uart_phy_mode cdc_to_phy(uint8_t itf)
 {
     switch (itf) {
+#if RPBRIDGE_HAVE_RS232_PHY
     case CDC_ITF_UART1_RS232: return UART_PHY_RS232;
+#endif
+#if RPBRIDGE_HAVE_RS485_PHY
     case CDC_ITF_UART1_RS485: return UART_PHY_RS485;
+#endif
     case CDC_ITF_UART1_TTL:   return UART_PHY_TTL;
     default:                  return UART_PHY_OFF;
     }
@@ -217,10 +245,12 @@ void cdc_glue_poll(void)
     const bool uart0_claimed = cmd_sys_uart_claimed(0u);
     const bool uart1_claimed = cmd_sys_uart_claimed(1u);
 
-    /* UART0 HW — only the active CDC bidirects; the other two UART0
-     * CDCs just get their RX FIFOs drained into the bit bucket.
-     * A claim on UART0 makes every UART0 CDC look "inactive". */
-    for (uint8_t itf = CDC_ITF_UART1_RS232; itf <= CDC_ITF_UART1_TTL; ++itf) {
+    /* UART0 HW — only the active CDC bidirects; the other UART0 CDCs
+     * (RS232 / RS485 banks, when present) just get their RX FIFOs
+     * drained into the bit bucket. A claim on UART0 makes every
+     * UART0 CDC look "inactive". On bare-board variants with no
+     * transceivers, only TTL is enumerated (one iteration). */
+    for (uint8_t itf = 0u; itf <= CDC_ITF_UART1_TTL; ++itf) {
         if (!tud_cdc_n_ready(itf)) continue;
 
         if (uart0_claimed) {
@@ -233,8 +263,9 @@ void cdc_glue_poll(void)
         }
     }
 
+#if RPBRIDGE_HAVE_PIO_UART
     /* UART 2 (PIO) — independent from UART0, always bidirectional
-     * unless claimed by the driver. */
+     * unless claimed by the driver. Gated on RPBRIDGE_HAVE_PIO_UART. */
     if (tud_cdc_n_ready(CDC_ITF_UART2_TTL)) {
         if (uart1_claimed) {
             drain_inactive_cdc(CDC_ITF_UART2_TTL);
@@ -243,6 +274,9 @@ void cdc_glue_poll(void)
             pump_pio_to_cdc(0u, CDC_ITF_UART2_TTL);
         }
     }
+#else
+    (void)uart1_claimed;
+#endif
 
     /* RS485 DE deassertion + PIO FIFO trailing drain. */
     uart_hw_tick(0u);
@@ -271,11 +305,16 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
     }
 
     switch (itf) {
+#if RPBRIDGE_HAVE_RS232_PHY
     case CDC_ITF_UART1_RS232:
+#endif
+#if RPBRIDGE_HAVE_RS485_PHY
     case CDC_ITF_UART1_RS485:
+#endif
     case CDC_ITF_UART1_TTL:
         uart_hw_set_line_coding(0u, p->bit_rate, p->data_bits, stop, parity);
         break;
+#if RPBRIDGE_HAVE_PIO_UART
     case CDC_ITF_UART2_TTL: {
         /* PIO-UART is 8N1-only — see peripherals/uart_pio.h header-block.
          * The helper applies the baud, clamps framing, and returns +1
@@ -299,6 +338,7 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p)
         }
         break;
     }
+#endif
     default:
         break;
     }
@@ -325,8 +365,12 @@ void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts)
     (void)rts;
 
     switch (itf) {
+#if RPBRIDGE_HAVE_RS232_PHY
     case CDC_ITF_UART1_RS232:
+#endif
+#if RPBRIDGE_HAVE_RS485_PHY
     case CDC_ITF_UART1_RS485:
+#endif
     case CDC_ITF_UART1_TTL:
         if (dtr) {
             uart_phy_set(cdc_to_phy(itf));
@@ -337,9 +381,11 @@ void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts)
         }
         break;
 
+#if RPBRIDGE_HAVE_PIO_UART
     case CDC_ITF_UART2_TTL:
         /* PIO-UART has no transceiver to coordinate. Nothing to do. */
         break;
+#endif
 
     default:
         break;
@@ -358,16 +404,22 @@ void tud_cdc_send_break_cb(uint8_t itf, uint16_t duration_ms)
     bool asserted = (duration_ms != 0u);
 
     switch (itf) {
+#if RPBRIDGE_HAVE_RS232_PHY
     case CDC_ITF_UART1_RS232:
+#endif
+#if RPBRIDGE_HAVE_RS485_PHY
     case CDC_ITF_UART1_RS485:
+#endif
     case CDC_ITF_UART1_TTL:
         if (g_active_uart0_cdc == (int)itf) {
             uart_set_break(uart0, asserted);
         }
         break;
+#if RPBRIDGE_HAVE_PIO_UART
     case CDC_ITF_UART2_TTL:
         /* PIO UART: break not implemented in this revision. */
         break;
+#endif
     default:
         break;
     }

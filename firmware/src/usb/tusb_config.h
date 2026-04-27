@@ -35,6 +35,12 @@ extern "C" {
 #endif
 
 /* ───── Board / MCU ──────────────────────────────────────────────────── */
+/* Pull in the active board header so the RPBRIDGE_HAVE_* /
+ * RPBRIDGE_BASE_CDC_COUNT macros are visible to TinyUSB's
+ * preprocessor — without this, TUSB sees CFG_TUD_CDC=0 and the CDC
+ * class implementation is preprocessed out, breaking the link. */
+#include "pico.h"
+
 #ifndef CFG_TUSB_MCU
 #define CFG_TUSB_MCU              OPT_MCU_RP2040   /* RP2350 shares the RP2040 TinyUSB driver */
 #endif
@@ -70,10 +76,13 @@ extern "C" {
  * USB-side debug log. UART1 hardware stdio remains enabled in either
  * configuration — see firmware/CMakeLists.txt for the build option.
  */
+/* Base CDC count is variant-driven (RPBRIDGE_BASE_CDC_COUNT comes
+ * from the active board header, computed from the HAVE_* flags).
+ * RPBRIDGE_DEBUG_CDC adds one more for the optional stdio sink. */
 #ifdef RPBRIDGE_DEBUG_CDC
-#define CFG_TUD_CDC               5
+#define CFG_TUD_CDC               (RPBRIDGE_BASE_CDC_COUNT + 1)
 #else
-#define CFG_TUD_CDC               4
+#define CFG_TUD_CDC               (RPBRIDGE_BASE_CDC_COUNT)
 #endif
 #define CFG_TUD_VENDOR            2   /* RPBP transport + gs_usb */
 #define CFG_TUD_HID               0

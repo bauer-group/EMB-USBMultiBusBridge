@@ -226,6 +226,16 @@ pico_board_cmake_set_default(PICO_FLASH_SIZE_BYTES, (4 * 1024 * 1024))
 #ifndef RPBRIDGE_HAVE_RS485_PHY
 #define RPBRIDGE_HAVE_RS485_PHY  0
 #endif
+
+/* Base CDC count: same formula as rev-B; with both transceiver phys
+ * absent on the bare Pico 2, this evaluates to 2 by default
+ * (UART0 TTL + UART2 PIO-UART). Setting RPBRIDGE_HAVE_PIO_UART=0 in
+ * a custom build collapses to 1 CDC. */
+#define RPBRIDGE_BASE_CDC_COUNT  ( \
+        (RPBRIDGE_HAVE_RS232_PHY ? 1 : 0) + \
+        (RPBRIDGE_HAVE_RS485_PHY ? 1 : 0) + \
+        1 /* UART0 TTL */ + \
+        (RPBRIDGE_HAVE_PIO_UART  ? 1 : 0))
 /* Inert sentinels — kept defined so source files referencing the
  * macros compile. uart_phy.c gates all uses behind RPBRIDGE_HAVE_*_PHY
  * which short-circuits to 0 here. */
