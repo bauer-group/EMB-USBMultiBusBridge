@@ -46,7 +46,7 @@ rpbridge-protocol = { path = "rpbridge-protocol", version = "0.1.0" }
 rpbridge          = { path = "rpbridge",          version = "0.1.0" }
 
 # Transport
-nusb       = "0.1"
+nusb       = "0.2"
 rusb       = "0.9"
 
 # Framing / encoding
