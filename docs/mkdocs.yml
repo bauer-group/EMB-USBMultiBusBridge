@@ -12,6 +12,14 @@ copyright:        Copyright &copy; 2026 BAUER GROUP. Content licensed CC-BY-4.0.
 docs_dir: .
 site_dir: ../site
 
+# BAUER GROUP brand stylesheet (mapped from mkdocs-material variables to
+# the brand tokens at brand.docs.bauer-group.com). The file is materialised
+# into docs/assets/_bauer-brand.css by the bauer-group/automation-templates
+# mkdocs-deploy-pages reusable; a local copy is committed so `mkdocs serve`
+# during development picks up the same colours without a CI round-trip.
+extra_css:
+  - assets/_bauer-brand.css
+
 theme:
   name: material
   language: en
