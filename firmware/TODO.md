@@ -391,12 +391,16 @@ into board-header macros so additional variants land as
       constant; bare-board variants currently enumerate 4 CDCs
       where only TTL is meaningful. A variant-driven CDC count
       collapses to 1 CDC on Pi Pico 2.
-- [ ] **Single-LED gate** — Pi Pico 2 has only GP25 (green LED);
-      the firmware's PWM-driven RGB LED is collapsed onto the same
-      pin. A `RPBRIDGE_HAVE_RGB_LED` flag with a single-LED
-      fallback in `main.c::led_init` would be cleaner.
-- [ ] **CI `grep` check** — fail the build if any new GP-pin
-      literal lands in `firmware/src/` to enforce macro discipline.
+- [x] **Single-LED gate** — `RPBRIDGE_HAVE_RGB_LED` flag selects
+      between three-channel PWM RGB (rev-B) and a single-channel
+      max(r,g,b) brightness path (Pico 2). `main.c::led_init` and
+      `led_apply_rgb` branch on it.
+- [x] **CI `grep` check** — `firmware/scripts/check-pin-discipline.sh`
+      audits 22 pin-typed pico-sdk functions in `firmware/src/`,
+      fails on hardcoded GP-literals that should go through a
+      `RPBRIDGE_*_PIN` macro. Wired into
+      `firmware/build-all-variants.sh` so every local + CI build
+      runs the gate. Inline opt-out: `// pin-discipline: ok`.
 
 ## M12 — PIO2 applets: WS2812 + DMX512
 
@@ -502,6 +506,97 @@ logic-capture / RS485 precision-DE applets.
       PIO clkdiv yields 1 µs/cycle; overdrive needs 0.1 µs/cycle
       (15 MHz SM) which is within the RP2350 PIO ceiling at default
       150 MHz clk_sys.
+
+## M13 — I²S continuous streaming (host → firmware)
+
+Adds a continuous PCM streaming path on top of the existing I²S
+subsystem so userspace can pipe an arbitrarily-long audio source
+through the bridge (audio playback, beacon tones, latency-bounded
+TX of pre-recorded streams). Today I²S is request/response —
+`I2S_WRITE` writes a one-shot buffer per RPBP call.
+
+### Architectural premise
+
+The existing `rpbp_stream` module is **producer→host** only (ADC
+streamer, future logic-analyser): firmware emits `STREAM_DATA`
+frames, host advertises credit. M13 is the **inverse** direction —
+host emits `STREAM_DATA` frames, firmware consumes them into an
+I²S TX DMA ring buffer and advertises credit back as the ring
+empties. The two directions share the channel-id range and the
+RPBP `STREAM_DATA` / `STREAM_CREDIT` message types but live in
+separate registries because the per-slot state is opposite.
+
+### Sub-tasks
+
+- [ ] **rpbp_stream_rx.{c,h}** — sibling module to `rpbp_stream`.
+      Per-channel ring buffer + DMA bind hook + credit emitter.
+      API surface:
+        `int  rpbp_stream_rx_open(uint16_t channel, void *ring,
+                                  size_t ring_bytes,
+                                  void (*on_data_avail)(void *),
+                                  void *cb_arg);`
+        `int  rpbp_stream_rx_close(uint16_t channel);`
+        `void rpbp_stream_rx_on_data(uint16_t channel,
+                                     const uint8_t *frame,
+                                     size_t frame_len);`
+        `void rpbp_stream_rx_advance(uint16_t channel,
+                                      size_t bytes_consumed);`
+      The dispatcher routes `RPBP_MT_STREAM_DATA` frames whose
+      channel is in the rx-registry to `rpbp_stream_rx_on_data`;
+      DMA completion ISR calls `rpbp_stream_rx_advance` to free
+      ring space, which triggers a `STREAM_CREDIT` emission to
+      the host.
+
+- [ ] **`firmware/src/peripherals/i2s.{c,h}` DMA chaining** —
+      adapt the per-call WRITE DMA channel into a chained
+      configuration that drains a ring buffer continuously.
+      Underrun handling: when the ring is empty and DMA
+      completes, emit silence (zero-fill) and flag a sticky
+      `underrun_count` for the next `GET_INFO` reply.
+
+- [ ] **`firmware/src/commands/cmd_i2s.c` opcodes** — extend the
+      I²S subsystem (0x0A):
+        `I2S_STREAM_OPEN  (0x06)` — args: `bus_idx, ring_bytes`
+                                    returns: assigned channel id +
+                                    initial credit (= ring_bytes).
+        `I2S_STREAM_CLOSE (0x07)` — args: `bus_idx`.
+      Existing `I2S_WRITE (0x05)` stays for one-shot use.
+
+- [ ] **Userspace `userspace/rpbridge-protocol/src/subsys/i2s.rs`**
+      — request builders and response parsers for the two new
+      opcodes; STREAM_DATA framing helper for callers that prefer
+      not to touch RPBP transport directly.
+
+- [ ] **Userspace `userspace/rpbridge-ctl/`** — `i2s stream`
+      subcommand that pipes stdin (raw 16-bit stereo PCM at the
+      configured sample rate) to the firmware via the new
+      streaming channel. Mirrors the `adc stream` shape.
+
+- [ ] **Host-side test in `firmware/tests/host/`** — ring-buffer
+      append + advance + credit-emission unit test. Underrun
+      path test (empty-ring DMA completion).
+
+- [ ] **Hardware validation** — pipe a sine-wave WAV file
+      (`ffmpeg -i input.wav -f s16le -ar 48000 -ac 2 - | rpbridge-ctl
+      i2s stream`) to a real I²S DAC, confirm continuous output
+      without audible artefacts. Listening test, oscilloscope
+      not strictly needed if no underruns and the credit log is
+      clean.
+
+### Out of scope (deferred follow-ups)
+
+- I²S RX continuous streaming. The chip can do it, but no real
+  use-case has materialised; if/when it does, the inverse path
+  reuses the existing `rpbp_stream` (firmware→host).
+- Sample-rate conversion in firmware. Userspace converts before
+  feeding the stream.
+- Format negotiation beyond 16-bit stereo. Float / 24-bit are
+  imaginable but each adds DMA-burst complexity; not blocking.
+
+### Effort
+
+~600 LoC across firmware + userspace; 2–3 dev-days including
+hardware validation against a real I²S DAC.
 
 ## Pre-production gates
 

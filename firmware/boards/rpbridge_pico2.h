@@ -84,18 +84,17 @@ pico_board_cmake_set_default(PICO_FLASH_SIZE_BYTES, (4 * 1024 * 1024))
 /* ───── On-board amenities ───────────────────────────────────────────── *
  *
  * The Pi Pico 2 board carries only a single green LED on GP25; the
- * RPBridge firmware drives an RGB LED via PWM. We collapse R/G/B
- * onto GP25 so any colour request lights the single LED. A proper
- * single-LED mode (no PWM, no R/G/B mixing) is a future cleanup.
+ * RPBridge firmware drives an RGB LED via PWM on the rev-B board.
+ * On Pico 2 we set RPBRIDGE_HAVE_RGB_LED=0 so main.c::led_init takes
+ * the single-PWM path (one channel, brightness = max(r,g,b)) instead
+ * of the per-channel R/G/B path that wouldn't make sense with three
+ * pins all aliased onto GP25.
  */
-#ifndef RPBRIDGE_LED_R_PIN
-#define RPBRIDGE_LED_R_PIN 25
+#ifndef RPBRIDGE_HAVE_RGB_LED
+#define RPBRIDGE_HAVE_RGB_LED 0
 #endif
-#ifndef RPBRIDGE_LED_G_PIN
-#define RPBRIDGE_LED_G_PIN 25
-#endif
-#ifndef RPBRIDGE_LED_B_PIN
-#define RPBRIDGE_LED_B_PIN 25
+#ifndef RPBRIDGE_LED_PIN
+#define RPBRIDGE_LED_PIN 25
 #endif
 
 /* No user button on the bare Pico 2 — leave the firmware's hook

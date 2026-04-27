@@ -85,14 +85,24 @@
  * which applies the perceptual R/G/B calibration.
  * ────────────────────────────────────────────────────────────────────── */
 
-#ifndef RPBRIDGE_LED_R_PIN
-#define RPBRIDGE_LED_R_PIN 22
+#ifndef RPBRIDGE_HAVE_RGB_LED
+#define RPBRIDGE_HAVE_RGB_LED 1
 #endif
-#ifndef RPBRIDGE_LED_G_PIN
-#define RPBRIDGE_LED_G_PIN 23
-#endif
-#ifndef RPBRIDGE_LED_B_PIN
-#define RPBRIDGE_LED_B_PIN 24
+
+#if RPBRIDGE_HAVE_RGB_LED
+#  ifndef RPBRIDGE_LED_R_PIN
+#    define RPBRIDGE_LED_R_PIN 22
+#  endif
+#  ifndef RPBRIDGE_LED_G_PIN
+#    define RPBRIDGE_LED_G_PIN 23
+#  endif
+#  ifndef RPBRIDGE_LED_B_PIN
+#    define RPBRIDGE_LED_B_PIN 24
+#  endif
+#else
+#  ifndef RPBRIDGE_LED_PIN
+#    define RPBRIDGE_LED_PIN 25
+#  endif
 #endif
 
 #define RPBRIDGE_LED_PWM_HZ         1000u    /* 1 kHz — no flicker, no whine */
@@ -103,6 +113,10 @@
  * LEDs of a common-anode discrete package give uneven apparent
  * brightness at identical duty; a rough perceptual balance for the
  * rev-B part is ~30 % R / 100 % G / 60 % B at "full white".
+ *
+ * In the single-LED variant only the green calibration is meaningful
+ * (the on-board pico2 LED is green). r/b channels are folded into
+ * brightness via max(r,g,b); see led_apply_rgb() below.
  */
 #define RPBRIDGE_LED_CAL_R   ((uint16_t)(0xFFFFu * 30u / 100u))
 #define RPBRIDGE_LED_CAL_G   ((uint16_t)(0xFFFFu * 100u / 100u))
@@ -118,6 +132,7 @@ static int led_init(void)
      * the PWM register counts below the threshold the GPIO is HIGH
      * (common-anode = LED off); inverting the output means the same
      * threshold turns the LED ON. duty=0 → LED off, duty=full → ON. */
+#if RPBRIDGE_HAVE_RGB_LED
     const uint8_t pins[] = {
         RPBRIDGE_LED_R_PIN, RPBRIDGE_LED_G_PIN, RPBRIDGE_LED_B_PIN,
     };
@@ -126,19 +141,35 @@ static int led_init(void)
         if (rc < 0) return -1;
         gpio_set_outover(pins[i], GPIO_OVERRIDE_INVERT);
     }
+#else
+    /* Single-pin path: one PWM channel, common-cathode on Pico 2 (so
+     * NO output-invert — duty=0 is LED off, duty=full is LED on). */
+    int rc = pwm_hw_configure_led(RPBRIDGE_LED_PIN, RPBRIDGE_LED_PWM_HZ, 0u);
+    if (rc < 0) return -1;
+#endif
     return 0;
 }
 
-/* Apply a Q0.16 colour triple, scaled by the per-channel perceptual
- * calibration. Inputs 0..65535 map intuitively to off..full-white. */
+/* Apply a Q0.16 colour triple. With RGB hardware, each channel goes
+ * through its own perceptual calibration. With a single LED, the
+ * incoming triple collapses to the brightest channel — any non-zero
+ * colour lights the LED, and white-equivalents (r=g=b=full) light it
+ * fully. The G calibration is used because the Pico 2 LED is green. */
 static void led_apply_rgb(uint16_t r, uint16_t g, uint16_t b)
 {
+#if RPBRIDGE_HAVE_RGB_LED
     uint16_t rc = (uint16_t)(((uint32_t)r * RPBRIDGE_LED_CAL_R) >> 16);
     uint16_t gc = (uint16_t)(((uint32_t)g * RPBRIDGE_LED_CAL_G) >> 16);
     uint16_t bc = (uint16_t)(((uint32_t)b * RPBRIDGE_LED_CAL_B) >> 16);
     pwm_hw_set_duty(RPBRIDGE_LED_R_PIN, rc);
     pwm_hw_set_duty(RPBRIDGE_LED_G_PIN, gc);
     pwm_hw_set_duty(RPBRIDGE_LED_B_PIN, bc);
+#else
+    uint16_t v = r > g ? r : g;
+    if (b > v) v = b;
+    uint16_t vc = (uint16_t)(((uint32_t)v * RPBRIDGE_LED_CAL_G) >> 16);
+    pwm_hw_set_duty(RPBRIDGE_LED_PIN, vc);
+#endif
 }
 
 /* ───── Scene renderers ──────────────────────────────────────────────── */

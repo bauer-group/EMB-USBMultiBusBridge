@@ -146,13 +146,20 @@ the multi-board polish that didn't make the M9 cut — lives in
 - **PIO-precision RS485 DE** *(future, tracked since M4d)* — only
   if a scope-level audit shows the software DE has unacceptable
   jitter at 3 Mbaud.
-- **Multi-board CI grep guards + LED-mono variant polish** —
-  cosmetic build-time fences against pin-number drift.
+- ~~**Multi-board CI grep guards + LED-mono variant polish**~~ —
+  closed: pin-discipline gate at
+  [`firmware/scripts/check-pin-discipline.sh`](scripts/check-pin-discipline.sh)
+  fails on any hardcoded GP-literal in `firmware/src/`; the
+  `RPBRIDGE_HAVE_RGB_LED` flag selects between three-channel RGB
+  PWM (rev-B) and a single-channel max(r,g,b) brightness path
+  (Pico 2).
 - **DMX RX (RDM) + DMX phy reuse with UART0 RS485** — feature
   growth tracked separately.
 - **SK6812-RGBW** — 32-bit/pixel variant of the WS2812 program.
-- **I²S continuous streaming via RPBP stream channel** — rides on
-  M6b infrastructure once a use-case lands.
+- **I²S continuous streaming via RPBP stream channel** — planned
+  as M13. Rides on the existing M6b stream-channel design but
+  inverts the direction (host → firmware). Sub-tasks + effort
+  estimate documented at [`TODO.md` M13](TODO.md#m13--i²s-continuous-streaming-host--firmware).
 - **1-Wire overdrive (10 µs slot)** — needs PIO clkdiv tweak.
 
 The above are explicitly *post-1.0* and do not affect the

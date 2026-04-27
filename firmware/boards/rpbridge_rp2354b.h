@@ -65,6 +65,9 @@ pico_board_cmake_set_default(PICO_FLASH_SIZE_BYTES, (2 * 1024 * 1024))
 /* ───── On-board amenities ───────────────────────────────────────────── */
 
 /* Single discrete RGB LED on GP22/GP23/GP24 — common-anode, GPIO sinks. */
+#ifndef RPBRIDGE_HAVE_RGB_LED
+#define RPBRIDGE_HAVE_RGB_LED 1
+#endif
 #ifndef RPBRIDGE_LED_R_PIN
 #define RPBRIDGE_LED_R_PIN 22
 #endif

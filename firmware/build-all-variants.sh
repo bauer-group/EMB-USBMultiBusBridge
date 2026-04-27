@@ -37,6 +37,14 @@ fi
 # pico-sdk toolchain. Ninja is shipped alongside it (~/.pico-sdk/ninja/).
 GENERATOR="${RPBRIDGE_CMAKE_GENERATOR:-Ninja}"
 
+# Multi-board pin-discipline gate: catches hardcoded GP literals in
+# firmware/src/ that should go through RPBRIDGE_*_PIN macros instead.
+# Skip with RPBRIDGE_SKIP_PIN_DISCIPLINE=1 in the rare case where the
+# script itself needs to be debugged from the build flow.
+if [[ "${RPBRIDGE_SKIP_PIN_DISCIPLINE:-0}" != "1" ]]; then
+    bash "$here/scripts/check-pin-discipline.sh"
+fi
+
 for variant in "${VARIANTS[@]}"; do
     build_dir="$here/build/${variant#rpbridge_}"
     echo
