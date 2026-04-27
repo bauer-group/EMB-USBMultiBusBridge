@@ -8,7 +8,7 @@ on:
       - 'docs/**'
       - 'README.md'
       - 'CHANGELOG.md'
-      - '.github/workflows/docs.yml'
+      - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
 permissions:

@@ -28,7 +28,7 @@ rpbridge/
 │       ├── driver-kunit.yml      # KUnit + umockdev-Integrationstests
 │       ├── driver-package.yml    # DKMS/DEB/RPM-Pakete
 │       ├── tools.yml             # rpbridge-ctl (Rust oder C)
-│       ├── docs.yml              # mkdocs → GitHub Pages
+│       ├── deploy-pages.yml      # mkdocs → GitHub Pages
 │       ├── release.yml           # Tag → kombinierter GitHub-Release
 │       └── nightly.yml           # Nächtlicher Mainline-Kernel-Check
 ├── firmware/
