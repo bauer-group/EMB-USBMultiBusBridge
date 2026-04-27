@@ -1,61 +1,82 @@
-# SPDX-License-Identifier: Apache-2.0
-name: release
+# SPDX-License-Identifier: MIT
+#
+# Tag-driven release. Builds each shipping component through the
+# containerized-embedded-build reusable, then aggregates artefacts
+# into a single GitHub Release with SBOM and CHECKSUMS.
+#
+# Driver binary release stays opt-in (commented out) until M12 in
+# driver/TODO.md closes — out-of-tree kernel modules normally build
+# from source on the target system anyway.
+
+name: 🚀 Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
-permissions:
-  contents: write   # needed to attach artefacts to the GitHub Release
-
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false   # never cancel a tagged release mid-flight
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # publish Release + attach artefacts
 
 jobs:
   firmware:
-    uses: ./.github/workflows/firmware.yml
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: firmware
+      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
 
   userspace:
-    uses: ./.github/workflows/userspace.yml
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: userspace
+      matrix-variants: '["--x86_64","--aarch64"]'
 
-  driver:
-    uses: ./.github/workflows/driver.yml
+  # driver-release:
+  #   uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+  #   with:
+  #     component: driver
+  #     matrix-variants: '["--full"]'
+  #     attach-driver-binary: true
 
   publish:
-    name: publish GitHub Release
-    runs-on: ubuntu-24.04
+    name: 📦 Publish GitHub Release
+    needs: [firmware, userspace]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [firmware, userspace, driver]
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
 
-      - name: Flatten release artefacts
+      - name: 🗂️ Flatten release artefacts
+        shell: bash
         run: |
           mkdir -p release
           find dist -type f \( \
-               -name '*.uf2' -o -name '*.elf' -o -name '*.bin' \
-            -o -name '*.hex' -o -name 'rpbridge-ctl' \
-            -o -name 'size.txt' \
+                 -name '*.uf2' -o -name '*.elf' -o -name '*.bin' \
+              -o -name '*.hex' -o -name 'rpbridge-ctl*' \
+              -o -name 'size.txt' \
           \) -exec cp -v {} release/ \;
           ( cd release && sha256sum * > CHECKSUMS.txt )
 
-      - name: Generate SBOM
+      - name: 🧾 Generate SBOM
         uses: anchore/sbom-action@v0
         with:
           path: ./
           format: spdx-json
           output-file: release/rpbridge-sbom.spdx.json
 
-      - name: Generate release notes
-        id: notes
+      - name: 📝 Generate release notes
+        shell: bash
         run: |
           {
             echo "## What's Changed"
@@ -67,13 +88,13 @@ jobs:
             fi
             echo ""; echo ""
             echo "## Artefacts"
-            echo '* `rpbridge.uf2` — RP2354B firmware image.'
-            echo '* `rpbridge-ctl` — CLI (x86_64, aarch64 variants).'
+            echo '* `rpbridge-*.uf2/.elf/.bin/.hex` — firmware images per board.'
+            echo '* `rpbridge-ctl-*` — userspace CLI (x86_64, aarch64).'
             echo '* `rpbridge-sbom.spdx.json` — SPDX SBOM.'
             echo '* `CHECKSUMS.txt` — SHA-256 of every artefact.'
           } > release_notes.md
 
-      - name: Publish
+      - name: 🚀 Publish
         uses: softprops/action-gh-release@v2
         with:
           files: release/*

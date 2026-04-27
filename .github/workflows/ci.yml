@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: MIT
+#
+# Single CI entrypoint for every component of RPBridge.
+#
+# Each component (firmware, driver, userspace, workspace tests) is
+# built through the bauer-group/automation-templates reusable
+# `containerized-embedded-build`, which materialises tools/docker/builder.Dockerfile
+# with a shared GHA layer cache and runs `tools/build.sh <component>`
+# inside it. That keeps the local-developer path and the CI path
+# byte-identical — same Dockerfile, same script, same flags.
+#
+# Replaces the previous firmware.yml / driver.yml / userspace.yml split.
+
+name: 🐳 CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - 'driver/**'
+      - 'userspace/**'
+      - 'tools/**'
+      - 'docs/driver-compatibility.yml'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'firmware/**'
+      - 'driver/**'
+      - 'userspace/**'
+      - 'tools/**'
+      - 'docs/driver-compatibility.yml'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: firmware
+      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
+      # Firmware artefacts attach by default — the .uf2/.elf/.bin/.hex
+      # are required for MCU flashing and always shipped.
+
+  driver:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: driver
+      # Default fmt-only (no --full); the kernel-module link gate
+      # closes with M12 in driver/TODO.md.
+      emit-driver-compat-matrix: true
+
+  userspace:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: userspace
+      matrix-variants: '["--x86_64","--aarch64"]'
+
+  workspace-tests:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: test
+      attach-firmware-binaries: false
+      attach-driver-binary: false
+      attach-userspace-binaries: false

@@ -1,0 +1,30 @@
+# Driver compatibility matrix.
+#
+# Rendered into the run summary by the containerized-embedded-build
+# reusable when called with `emit-driver-compat-matrix: true`.
+#
+# Schema (all fields optional; missing fields render as "—"):
+#   compatibility:
+#     - kernel:   '<uname-r-style version>'
+#       rustc:    '<distro rustc version paired to that kernel>'
+#       r4l_api:  '<Rust-for-Linux API surface tag>'
+#       status:   '<short freeform status, see legend>'
+#       notes:    '<freeform — link to TODO entry, drift summary, …>'
+#
+# Status legend:
+#   "fmt only"            rustfmt advisory passes; module link not attempted.
+#   "fmt + module link"   rustfmt clean AND `make modules` produces a .ko.
+#   "API drift (M12)"     R4L API in this kernel doesn't match driver source.
+
+compatibility:
+  - kernel:   '6.18.0-12-generic'
+    rustc:    '1.86.0'
+    r4l_api:  'usb::Driver v7.0'
+    status:   'fmt + module link (in progress)'
+    notes:    'Active development target — see driver/TODO.md M12.'
+
+  - kernel:   '6.19.x (next)'
+    rustc:    'tbd'
+    r4l_api:  'usb::Driver v7.1 (probe sig change expected)'
+    status:   'API drift (M13)'
+    notes:    'Will require a probe-signature port; tracked in driver/TODO.md M13.'
