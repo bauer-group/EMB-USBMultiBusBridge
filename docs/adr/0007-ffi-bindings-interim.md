@@ -6,7 +6,7 @@
 
 > **Superseded note (2026-04-26).** The Rust-for-Linux driver
 > direction this ADR scaffolded was abandoned in favour of a C
-> rewrite — see ADR-0003 §Amendment for the full reasoning. The
+> rewrite — see ADR-0003 #Amendment for the full reasoning. The
 > historical decision record below is preserved verbatim because it
 > documents the reasoning that was operative at the time of the
 > attempt; the FFI-binding strategy described here no longer

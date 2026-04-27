@@ -34,4 +34,4 @@ interface details:
 - Flash: single firmware image; no A/B partitions in v1.
 
 For the full elaboration see
-[`docs/drafts/rpbridge-architektur.md`](../drafts/rpbridge-architektur.md) §4.5.
+[`docs/drafts/rpbridge-architektur.md`](../drafts/rpbridge-architektur.md) #4.5.

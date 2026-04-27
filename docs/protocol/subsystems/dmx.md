@@ -16,7 +16,7 @@ the differential pair DMX requires.
 
 Access path: vendor RPBP. Linux has no in-kernel DMX subsystem;
 OLA (Open Lighting Architecture) is the de-facto userspace stack.
-A future char-device wrapper (driver/TODO.md §M12) will let OLA
+A future char-device wrapper (driver/TODO.md #M12) will let OLA
 bind to `/dev/rpbridge-dmxN`.
 
 ## Capabilities

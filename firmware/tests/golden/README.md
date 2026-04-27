@@ -19,7 +19,7 @@ agree byte-for-byte on these vectors.
 
 3. For each frame we want to freeze, the companion generator
    `gen_golden` (not yet checked in — tracked as firmware/TODO.md
-   §M8b "byte-frozen corpus") emits the raw bytes to a `.hex` file
+   #M8b "byte-frozen corpus") emits the raw bytes to a `.hex` file
    in this directory. Filename convention: `<msg>_<variant>.hex`,
    e.g. `hello_empty.hex`, `cmd_i2c_probe.hex`.
 

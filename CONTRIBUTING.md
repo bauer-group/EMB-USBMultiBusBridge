@@ -26,12 +26,11 @@ installs, on Debian/Ubuntu:
 
 * `gcc-arm-none-eabi`, `libnewlib-arm-none-eabi`, `cmake ≥ 3.28`, `ninja-build`
   — for the firmware.
-* `rustup` toolchain with `nightly-2026-04-01` (for the kernel driver; the
-  Rust-for-Linux pin is in `driver/rust-toolchain.toml`) and `stable`
-  (for userspace).
-* `bindgen-cli`, `rust-src` component.
-* `dkms`, `libelf-dev`, `libssl-dev`, `flex`, `bison`, `libusb-1.0-0-dev`,
-  `libudev-dev`, `libgpiod-dev`, `libsocketcan-dev`.
+* `linux-headers-generic` + `dkms` — for the C kernel module against the
+  running kernel.
+* `rustup` toolchain (`stable`) — for the userspace tree.
+* `libusb-1.0-0-dev`, `libudev-dev`, `libgpiod-dev`, `libsocketcan-dev`,
+  `i2c-tools`, `can-utils` — runtime + test dependencies.
 * `mkdocs`, `mkdocs-material`, `mike` — for the docs site.
 
 Re-running the script is idempotent and upgrades pinned versions where

@@ -19,7 +19,7 @@ pindirs.
 Access path: vendor RPBP. Linux exposes the bus via `rpbridge.ko`
 once an upstream `kernel::w1::Master` Rust wrapper exists; the
 mainline `w1_master_driver` shape is small enough that the
-adaptation is straightforward — see driver/TODO.md §M12.
+adaptation is straightforward — see driver/TODO.md #M12.
 
 ## Capabilities
 

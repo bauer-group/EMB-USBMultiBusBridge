@@ -50,4 +50,4 @@ at the first tagged release.
 
 A running firmware N.x stays compatible with drivers (N-1).x and
 (N+1).x as long as the MAJOR version matches — see
-[ADR-0001](adr/0001-protocol-choice.md) §"Consequences".
+[ADR-0001](adr/0001-protocol-choice.md) #consequences.

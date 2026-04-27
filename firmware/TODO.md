@@ -199,7 +199,7 @@ authoritative spec section.
 - [x] `ADC_STREAM_START` (0x04) / `ADC_STREAM_STOP` (0x05) opcodes
       in `cmd_adc.c`; rate clamped to 1..10 000 Hz (USB-FS bandwidth
       ceiling). Payload format documented in
-      `docs/protocol/subsystems/adc.md` §STREAM_START.
+      `docs/protocol/subsystems/adc.md` #STREAM_START.
 - [x] Capability-map feature flag `"adc.stream"`.
 
 ## M7 — Windows binding
@@ -241,7 +241,7 @@ authoritative spec section.
       round-trip, PWM-driven LED running, CAN bitrate non-zero,
       Core 1 liveness counter advancing, watchdog CTRL.ENABLE set.
       Pass/fail encoded as a u32 bitmap; full spec in
-      `docs/protocol/subsystems/sys.md` §0x06. Tests that would
+      `docs/protocol/subsystems/sys.md` #0x06. Tests that would
       need an external jumper (SPI MOSI↔MISO loopback, UART TX↔RX)
       remain as future extensions on unused bits.
 
@@ -290,8 +290,8 @@ notification storm.
       `/dev/rpbridge-uart1-*` goes dark for the duration of the
       claim; UART HW keeps running so the claim holder can read via
       `uart_hw_read()` / `uart_pio_read()` through its own path.
-- [x] Documented in `docs/protocol/subsystems/sys.md` §0x09 /
-      §0x0A. Reserved-opcodes range tightened to `0x0B..0x7F`.
+- [x] Documented in `docs/protocol/subsystems/sys.md` #0x09 /
+      #0x0A. Reserved-opcodes range tightened to `0x0B..0x7F`.
 
 ### M9c — kernel-driver wiring
 
@@ -300,7 +300,7 @@ Tracked in `driver/TODO.md`; summarised here for cross-reference:
 - [x] `rpbridge.ko` binds the vendor interface by VID/PID +
       InterfaceClass. No `SET_CONFIGURATION` at probe time.
       *(Structure in place; URB/endpoint code gated on R4L-USB
-      bindings — see `driver/TODO.md` §M10c.)*
+      bindings — see `driver/TODO.md` #M10c.)*
 - [x] Walks the capability map, gates each aux child on the
       subsystem's presence — `spawn_children()` in core_driver.rs.
 - [x] Spawns aux children: `rpbridge-gpio`, `rpbridge-i2c`,

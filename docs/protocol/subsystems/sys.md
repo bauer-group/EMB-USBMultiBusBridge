@@ -330,7 +330,7 @@ link drops.
 ## `0x09 — UART_CLAIM`
 
 Driver-coordinated UART hand-off (see
-[ADR-0005](../../adr/0005-driver-optional-coexistence.md) §M9b).
+[ADR-0005](../../adr/0005-driver-optional-coexistence.md) #M9b).
 When a UART instance is claimed, the firmware's CDC pump stops
 forwarding bytes between its CDC-ACM(s) and the UART hardware:
 

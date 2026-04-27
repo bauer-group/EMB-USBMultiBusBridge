@@ -20,7 +20,7 @@ correctly).
 Access path: vendor RPBP. There is no kernel ASoC adaptation yet —
 ALSA / ASoC integration is genuinely heavyweight (machine driver +
 codec driver + DAI link) and tracked separately in driver/TODO.md
-§M12. Userspace can drive the firmware directly via libusb in the
+#M12. Userspace can drive the firmware directly via libusb in the
 meantime.
 
 v1 scope is **buffer playback** ("play this set of frames") rather

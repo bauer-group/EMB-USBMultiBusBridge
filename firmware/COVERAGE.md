@@ -24,7 +24,7 @@ spec + tests).
 | Driver wire layer                        | **11 / 11** *(see `driver/src/*.rs`)* |
 | Driver kernel-adapter layer              | **🚧 R4L bindings stabilising** *(see [ADR-0007](../docs/adr/0007-ffi-bindings-interim.md))* |
 | Build status (rev-B + Pico 2)            | **✅ green** *(per-variant CI matrix)* |
-| Pre-production gates                     | **3 open** — see [§Pre-production](#pre-production-gates) |
+| Pre-production gates                     | **3 open** — see [#Pre-production](#pre-production-gates) |
 | Open optional follow-ups                 | **8** — see [TODO.md backlog](TODO.md) |
 
 ---
@@ -88,7 +88,7 @@ already does, via libusb in tests).
 † — A 5th CDC carrying `printf()` output ("RPBridge Debug Log")
 can be opted into at build time with `-DRPBRIDGE_DEBUG_CDC=ON`.
 Default builds keep the production layout; see
-[firmware/README.md §Debugging](README.md#debugging) for the
+[firmware/README.md #Debugging](README.md#debugging) for the
 toggle and the descriptor-shift it triggers.
 
 ---
@@ -112,10 +112,10 @@ toggle and the descriptor-shift it triggers.
 
 | Resource           | Used                          | Free                             | Source                                                    |
 |:-------------------|:------------------------------|:---------------------------------|:----------------------------------------------------------|
-| USB endpoints (Cfg 1) | 10 IN + 6 OUT                 | 5 IN + 9 OUT                     | [resource-budget §2](../docs/firmware/resource-budget.md#2-usb-endpoints) |
-| PIO state machines    | 9 / 12                        | 3 (PIO2 fully open after I²S)    | [resource-budget §3](../docs/firmware/resource-budget.md#3-pio-blocks-state-machines-instructions) |
+| USB endpoints (Cfg 1) | 10 IN + 6 OUT                 | 5 IN + 9 OUT                     | [resource-budget #2](../docs/firmware/resource-budget.md#2-usb-endpoints) |
+| PIO state machines    | 9 / 12                        | 3 (PIO2 fully open after I²S)    | [resource-budget #3](../docs/firmware/resource-budget.md#3-pio-blocks-state-machines-instructions) |
 | PIO instructions      | ~74 / 96 across blocks        | ~22 free                         | (same)                                                    |
-| DMA channels          | dynamic via `dma_claim_unused_channel()` | 16 total — never saturated         | [resource-budget §4](../docs/firmware/resource-budget.md#4-dma-channels) |
+| DMA channels          | dynamic via `dma_claim_unused_channel()` | 16 total — never saturated         | [resource-budget #4](../docs/firmware/resource-budget.md#4-dma-channels) |
 | Flash (rev-B build)   | ≈ 110 kB code + 50 kB rodata  | of 2 MB                          | linker map per build                                      |
 
 ---

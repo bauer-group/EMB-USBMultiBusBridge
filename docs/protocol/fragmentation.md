@@ -2,7 +2,7 @@
 
 Detailed rules and worked examples for splitting RPBP messages larger
 than `MAX_PAYLOAD_LEN = 4096` bytes. Normative; see
-[`rpbp-v1.md` §7](rpbp-v1.md#7-fragmentation) for the brief summary.
+[`rpbp-v1.md` #7](rpbp-v1.md#7-fragmentation) for the brief summary.
 
 ## Why fragmentation exists
 

@@ -12,10 +12,10 @@
 > wired into the firmware, the C kernel driver, the userspace
 > defaults, and the udev rules. The Linux kernel driver is plain
 > C against the stable kernel-module ABI (see
-> [ADR-0003 §Amendment](docs/adr/0003-language-choice.md#amendment--2026-04-26--driver-reverted-to-c)
+> [ADR-0003 #Amendment](docs/adr/0003-language-choice.md#amendment--2026-04-26--driver-reverted-to-c)
 > for why we pivoted away from Rust-for-Linux). Two pre-production
 > gates remain open — they are tracked in
-> [`firmware/COVERAGE.md` §Pre-production](firmware/COVERAGE.md#pre-production-gates).
+> [`firmware/COVERAGE.md` #Pre-production](firmware/COVERAGE.md#pre-production-gates).
 > Expect APIs and the wire format to be additively-stable from
 > here, but treat anything in this repo as alpha until those gates
 > close.
@@ -147,7 +147,7 @@ codebase looks the way it does. Notable recent ones:
 │   ├── TODO.md                # developer working backlog (granular)
 │   └── CMakeLists.txt
 │
-├── driver/                    # Linux kernel module (Rust-for-Linux ≥ 6.13)
+├── driver/                    # Linux kernel module (plain C, ≥ 5.15 LTS)
 │   ├── src/                   #   wire layer + per-subsystem clients + aux children
 │   ├── tests/                 #   KUnit + umockdev harnesses
 │   ├── packaging/             #   debian + rpm DKMS spec files

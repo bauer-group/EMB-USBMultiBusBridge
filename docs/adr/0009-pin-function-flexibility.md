@@ -110,7 +110,7 @@ Backing implementation:
 Resource budget impact:
 
 - One PIO2 SM consumed (PIO2 still has 3 SMs free today — see
-  [resource-budget.md §3](../firmware/resource-budget.md#3-pio-blocks-state-machines-instructions)).
+  [resource-budget.md #3](../firmware/resource-budget.md#3-pio-blocks-state-machines-instructions)).
 - One PIO2 instruction-memory slot of ~6 instructions.
 - No new DMA channel — the counter pushes one word per window via
   the SM RX FIFO; Core 0 drains in the main loop.

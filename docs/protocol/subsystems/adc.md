@@ -17,7 +17,7 @@ the RPBP credit-flow-control feature.
 
 Resolution: 12 bits (`raw ∈ [0, 4095]`).
 Reference voltage: `VREF = ADC_AVDD = 3300 mV` — filtered through a
-ferrite bead on the +3V3 rail (see hardware design §2.1).
+ferrite bead on the +3V3 rail (see hardware design #2.1).
 
 Conversion: `mV = raw * 3300 / 4095`.
 

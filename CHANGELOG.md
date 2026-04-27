@@ -59,7 +59,7 @@ combinations.
   and CAN per ADR-0006.
 - **Driver M10e..M10i**: per-subsystem `Client<T: RoundTrip>` types
   for GPIO / I²C / SPI / PWM / IIO. Every kernel-binding hook is
-  marked with a `§R4L-*-BINDINGS` comment naming the upstream
+  marked with a `#R4L-*-BINDINGS` comment naming the upstream
   binding each adapter consumes. I²C client coalesces write-restart-
   read into `FLAG_NO_STOP`; SPI client drives `HOLD_CS` from
   `cs_change`; PWM client encodes/decodes `pwm_state` ↔
@@ -179,7 +179,7 @@ combinations.
   is exercised end-to-end; both call `GET_INFO` and log the
   discovered universe. Layer 3 (kernel binding) is deferred until
   upstream R4L wrappers exist for `led_classdev_multicolor` and a
-  DMX char-device — tracked in `driver/TODO.md` §M12. Per-module
+  DMX char-device — tracked in `driver/TODO.md` #M12. Per-module
   inline tests + `MockRoundTrip` integration tests cover every
   opcode byte-for-byte.
 - **Firmware M12.2 — PIO1 + PIO2 expansion: 1-Wire + I²S TX.**
@@ -233,7 +233,7 @@ combinations.
 
 - **Status code mapping**: `Status::try_from` in the driver now
   gracefully degrades unknown status bytes (16..=255) to
-  `Status::EIo` instead of raising `EPROTO`. RPBP v1 §16 promises
+  `Status::EIo` instead of raising `EPROTO`. RPBP v1 #16 promises
   MINOR bumps may add status codes; an old driver against future
   firmware now surfaces such codes as a generic `EIO` to userland
   rather than misclassifying them as protocol corruption. Two new

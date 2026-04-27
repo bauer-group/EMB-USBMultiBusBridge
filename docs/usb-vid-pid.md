@@ -59,7 +59,7 @@ room for the new CDC at `{8, 9}`; the `MS OS 2.0` descriptor in
 mirrors the same gate so Windows WinUSB auto-binding follows. The
 `iInterface` strings, the VID/PID, and the host-driver match keys
 do not change. Default builds ship without the debug CDC — see
-[`firmware/README.md`](../firmware/README.md) §Debugging for the
+[`firmware/README.md`](../firmware/README.md) #Debugging for the
 build-time toggle and the stdio routing rationale.
 
 The subclass byte is the disambiguator — `'R'` for the RPBP

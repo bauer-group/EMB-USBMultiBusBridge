@@ -18,7 +18,7 @@ overlapping claims, so a re-assignment frees the previous owner first.
 > **Silicon vs. board.** This page is the **board layer** — the
 > physical connector, the assigned default, and the firmware-policy
 > view of "is this pin user-exposed?". Below each table, the
-> [§Silicon capability](#silicon-capability-rp2350a-vs-rp2350b)
+> [#Silicon capability](#silicon-capability-rp2350a-vs-rp2350b)
 > section captures what the RP2350 datasheet allows on each pin
 > regardless of board. A function can land on any pin where (silicon
 > permits) ∧ (board exposes the pin) ∧ (no broker conflict).
@@ -192,7 +192,7 @@ program that counts edges on a single input pin and pushes the
 total into the RX FIFO every M cycles.
 
 Currently this is **planned but not landed** — see
-[ADR-0009 §counter](../adr/0009-pin-function-flexibility.md#high-speed-counter)
+[ADR-0009 #counter](../adr/0009-pin-function-flexibility.md#high-speed-counter)
 for the protocol-side design. The PIO budget already reserves a
 slot in PIO2 for it (see
 [`docs/firmware/resource-budget.md`](../firmware/resource-budget.md#pending-applets)).

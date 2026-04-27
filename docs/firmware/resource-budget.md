@@ -33,7 +33,7 @@ build-time option (`-DRPBRIDGE_DEBUG_CDC=ON`, default OFF). When
 ON, it adds CDC #4 at `bInterfaceNumber {8,9}` and shifts the two
 vendor interfaces from `{8,9}` to `{10,11}`. Configuration value,
 EP allocation for #0..#3, and the vendor EPs are unchanged. See
-the §Config 1 EP table for the alternate row, and
+the #Config 1 EP table for the alternate row, and
 [`docs/usb-vid-pid.md`](../usb-vid-pid.md) for the descriptor view.
 
 Rules:

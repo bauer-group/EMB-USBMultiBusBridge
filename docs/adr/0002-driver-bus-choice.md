@@ -49,7 +49,7 @@ Negative:
 
 ## Supersedes
 
-Supersedes §8.1 ("Treiberfamilie nach MFD-Vorbild") of
+Supersedes #8.1 ("Treiberfamilie nach MFD-Vorbild") of
 `docs/drafts/rpbridge-architektur.md`. The MFD mention in that draft
 predates the decision to adopt `auxiliary_bus`; the driver-stack draft
 already captures the update.

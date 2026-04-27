@@ -41,7 +41,7 @@ A C driver compiles unchanged across years of kernel releases.
 The earlier Rust scaffold remains on the `archive/rust-driver`
 git branch for reference. See
 [`adr/0003-language-choice.md`](../adr/0003-language-choice.md)
-§Amendment for the full reasoning.
+#Amendment for the full reasoning.
 
 ## Kernel baseline
 

@@ -40,7 +40,7 @@ Total maximum frame length: `HEADER_LEN + MAX_PAYLOAD_LEN + CRC_LEN =
 4116 bytes`.
 
 `MAX_PAYLOAD_LEN = 4096` in v1. Messages larger than this MUST be split
-using the `FRAGMENT`/`LAST` flags; see [§7](#7-fragmentation).
+using the `FRAGMENT`/`LAST` flags; see [#7](#7-fragmentation).
 
 ## 3. Header
 
@@ -50,9 +50,9 @@ Sixteen bytes, **little-endian** for all multi-byte integers:
 |-------:|-----:|----------------|-----------------------------------------------|
 |  0     |  1   | `magic`        | `0x52` (`'R'`). Receivers reject non-matching frames with `EPROTO`. |
 |  1     |  1   | `version`      | `0x01` for v1. Non-matching versions return `EPROTO`; the device MAY reply with a `HELLO` to renegotiate. |
-|  2     |  1   | `msg_type`     | See [§4](#4-message-types).                   |
-|  3     |  1   | `flags`        | See [§5](#5-flags).                           |
-|  4     |  2   | `channel`      | See [§6](#6-channels).                        |
+|  2     |  1   | `msg_type`     | See [#4](#4-message-types).                   |
+|  3     |  1   | `flags`        | See [#5](#5-flags).                           |
+|  4     |  2   | `channel`      | See [#6](#6-channels).                        |
 |  6     |  2   | `seq`          | Monotonic per channel. Wraps at 65 536.       |
 |  8     |  4   | `payload_len`  | Net payload bytes (excludes header + CRC). Max 4096. |
 | 12     |  4   | `timestamp_us` | Sender's µs-since-boot at the moment of serialisation. 32-bit wraps at ~71.6 minutes. |
@@ -163,7 +163,7 @@ RFC 3720 reference vector: `CRC32C("123456789") == 0xE3069283`.
 
 Receivers MUST verify the CRC before consuming any payload field.
 CRC failure is reported to the user as `ECRC`; for a device-side
-failure, the sender is sent an `ERROR` frame (see [§12](#12-error-frames)).
+failure, the sender is sent an `ERROR` frame (see [#12](#12-error-frames)).
 
 ## 9. Session initialisation (HELLO flow)
 

@@ -44,17 +44,22 @@ unmodified:
 - Excellent tooling (pico-sdk, picotool, TinyUSB) and a well-supported
   open ecosystem.
 
-## Why Rust in userspace and in the kernel
+## Why Rust in userspace, C in the kernel
 
-For the **kernel driver**: starting with Linux 6.13, Rust-for-Linux
-provides stable enough USB and `auxiliary_bus` bindings to build an
-entire MFD-style driver without touching C. One implementation is
-easier to audit, test and refactor than a parallel C/Rust pair, so we
-committed to a Rust-only kernel module.
+For the **kernel driver**: plain C against the Linux kernel's stable
+in-kernel ABI. The driver was first attempted in Rust-for-Linux —
+the R4L API is still stabilising (between 6.18 and 7.0 the
+`kernel::usb::Driver` trait, `KString`, `#[vtable]` mechanics and
+the probe lifecycle all moved). Out-of-tree R4L modules pay this
+drift cost on every major kernel release. C compiles unchanged
+across years, which matters more for an out-of-tree module that has
+to land on whatever Linux Ubuntu ships today than the marginal
+maintenance benefit of "one language top-to-bottom" did.
 
 For **userspace**: memory safety, a first-class async ecosystem
 (`nusb`, `tokio`), a crate-per-binding model that makes FFI bindings
 to Python and .NET straightforward, and a build system that cross-
 compiles to ARM SBCs without surprises.
 
-See [ADR-0003](adr/0003-language-choice.md) for the full reasoning.
+See [ADR-0003 #Amendment](adr/0003-language-choice.md#amendment--2026-04-26--driver-reverted-to-c)
+for the full reasoning behind the C pivot.
