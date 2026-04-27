@@ -32,6 +32,3 @@ interface details:
 - SRAM bank 2: DMA descriptors + peripheral ring buffers.
 - SRAM banks 3–8: free for RPBP queues and application payloads.
 - Flash: single firmware image; no A/B partitions in v1.
-
-For the full elaboration see
-[`docs/drafts/rpbridge-architektur.md`](../drafts/rpbridge-architektur.md) #4.5.

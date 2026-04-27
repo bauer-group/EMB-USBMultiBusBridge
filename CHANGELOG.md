@@ -312,6 +312,5 @@ combinations.
 
 ### Notes
 
-- This changelog starts when the repository transitions from design-draft
-  stage to implementation stage. The design drafts that led to this
-  structure are preserved under [`docs/drafts/`](docs/drafts/).
+- This changelog starts when the repository transitions from
+  design-draft stage to implementation stage.

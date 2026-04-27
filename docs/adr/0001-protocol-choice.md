@@ -46,8 +46,8 @@ traffic is carried over three standard CDC-ACM interfaces. RPBP only
 covers the remaining subsystems (I²C, SPI, GPIO, PWM, ADC, UART phy
 selection, events, OTA triggers).
 
-See [`docs/drafts/rpbridge-driver-stack.md`](../drafts/rpbridge-driver-stack.md) #4
-for the full wire-format proposal this ADR accepts.
+The full wire format is specified in
+[`docs/protocol/rpbp-v1.md`](../protocol/rpbp-v1.md).
 
 ## Consequences
 
@@ -70,5 +70,5 @@ Negative:
 
 ## Supersedes
 
-Supersedes #5.3 ("Command-Framing") of `docs/drafts/rpbridge-architektur.md`
+Supersedes the original architecture draft's "Command-Framing" section,
 which left the framing deliberately vague.

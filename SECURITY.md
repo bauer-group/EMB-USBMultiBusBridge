@@ -13,9 +13,7 @@ This document covers vulnerabilities and security-impacting defects in:
 Hardware-level attacks that require physical modification of the device
 (OTP-fuse tampering, die decap, side-channel analysis with access to
 the PCB) are outside the scope we can defend against on an open, USB
-bus-powered developer tool. See the threat model in
-[`docs/drafts/rpbridge-protocol-and-modern-stack.md`](docs/drafts/rpbridge-protocol-and-modern-stack.md)
-§6 for the full list.
+bus-powered developer tool.
 
 ## Reporting a vulnerability
 

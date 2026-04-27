@@ -1,8 +1,7 @@
 # RPBP v1 — protocol specification
 
 **Status:** Stable (v1.0.0). Authoritative for the RPBridge Protocol
-version 1. Disagreements with design drafts under `docs/drafts/` are
-resolved in favour of this document.
+version 1.
 
 This specification is normative: firmware, kernel driver and userspace
 implementations MUST conform, and the shared golden-vector corpus under

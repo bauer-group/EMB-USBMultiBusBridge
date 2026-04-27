@@ -187,8 +187,7 @@ owns the runtime ledger. Every module that takes a pin MUST call
 `pin_broker_claim()` during init; overlapping claims return
 `-RPBP_EBUSY` and fail the init. The board header
 [`firmware/boards/rpbridge_rp2354b.h`](../../firmware/boards/rpbridge_rp2354b.h)
-remains the static reference and the authoritative pinout (it
-matches [hardware-design §6](../drafts/rpbridge-hardware-design.md)).
+remains the static reference and the authoritative pinout.
 
 Live claims as of M3:
 

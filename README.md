@@ -168,8 +168,7 @@ codebase looks the way it does. Notable recent ones:
 │   ├── firmware/              #   firmware developer guide + resource budget
 │   ├── driver/                #   Linux driver guide
 │   ├── hardware/              #   board design + pinout + pin capability matrix
-│   ├── adr/                   #   Architecture Decision Records (0001..0009)
-│   └── drafts/                #   original design drafts (preserved as historical)
+│   └── adr/                   #   Architecture Decision Records (0001..0009)
 │
 ├── dts/overlays/              # device-tree overlays for aux-provisioned clients
 ├── hardware/                  # KiCad 9 design files (rev-B, 2-layer, 80×55 mm)
@@ -216,8 +215,7 @@ $ rpbridge-ctl selftest --json
 ## Design principles
 
 The design follows four leading principles, detailed in
-[`docs/architecture/`](docs/architecture/) and the
-[design drafts](docs/drafts/):
+[`docs/architecture/`](docs/architecture/):
 
 1. **Self-describing device.** Host parses a CBOR capability map at
    bind time; no firmware-version matrix to maintain. The map

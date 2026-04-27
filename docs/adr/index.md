@@ -22,5 +22,5 @@ design drafts).
 
 Adding a new ADR? Copy the template from `0001-…` and bump the number.
 Every ADR changes the repository — reference it from the code it
-affects and from the design drafts under `docs/drafts/` when it
-supersedes one of their paragraphs.
+affects so future readers can follow the link from the change site
+back to the rationale.

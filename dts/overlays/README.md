@@ -24,9 +24,7 @@ dts/overlays/
 
 Compile with `dtc -I dts -O dtb -@ -o out.dtbo src.dts` on the host;
 the resulting `.dtbo` is linked into the firmware as a BLOB and
-served through the capability response. See
-[`docs/drafts/rpbridge-driver-stack.md`](../../docs/drafts/rpbridge-driver-stack.md)
-§4.7 for the full flow.
+served through the capability response.
 
 ## Example — BME280 on I²C bus 0 @ 0x76
 

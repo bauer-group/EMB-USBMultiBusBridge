@@ -49,7 +49,6 @@ Negative:
 
 ## Supersedes
 
-Supersedes #8.1 ("Treiberfamilie nach MFD-Vorbild") of
-`docs/drafts/rpbridge-architektur.md`. The MFD mention in that draft
-predates the decision to adopt `auxiliary_bus`; the driver-stack draft
-already captures the update.
+Supersedes the original architecture draft's "Treiberfamilie nach
+MFD-Vorbild" section. The MFD posture predates the decision to adopt
+`auxiliary_bus`; this ADR is the authoritative record going forward.

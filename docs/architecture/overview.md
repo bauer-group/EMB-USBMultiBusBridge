@@ -99,8 +99,7 @@ reusing mainline kernel drivers where they exist saves us real work:
 6. Core driver validates CRC, matches `seq`, wakes the waiting i2c
    child, which returns the buffer to i2c-dev.
 
-Round-trip budget: 400 µs on a warm link with short payloads (see
-`docs/drafts/rpbridge-protocol-and-modern-stack.md` #3.12).
+Round-trip budget: 400 µs on a warm link with short payloads.
 
 **GPIO IRQ delivery** is the reverse, asynchronous path: firmware's
 GPIO ISR pushes an `EVENT` frame on the events channel (1); driver's

@@ -1,9 +1,9 @@
 # Hardware
 
 KiCad 9 design files for the RPBridge rev-B board. Currently empty —
-the authoritative design document is
-[`docs/drafts/rpbridge-hardware-design.md`](../docs/drafts/rpbridge-hardware-design.md),
-pending translation into a checked-in KiCad project.
+the rev-B layout is documented at
+[`docs/hardware/rev-b.md`](../docs/hardware/rev-b.md), pending
+translation into a checked-in KiCad project.
 
 ## Planned layout
 

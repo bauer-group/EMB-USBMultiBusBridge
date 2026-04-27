@@ -57,8 +57,8 @@ Negative:
 ## Supersedes
 
 Supersedes the implicit C-primary posture of the original
-`rpbridge-architektur.md` #8 and locks in the Rust-only driver
-direction explicitly stated by the maintainer during planning.
+architecture draft and locks in the Rust-only driver direction
+explicitly stated by the maintainer during planning.
 
 ## Amendment — 2026-04-26 — Driver reverted to C
 
