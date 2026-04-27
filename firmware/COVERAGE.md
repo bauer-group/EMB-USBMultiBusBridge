@@ -70,7 +70,7 @@ already does, via libusb in tests).
 |:-----------------------------------|:-----------------------------------------|:------------------------------------------|
 | Package / GPIO count               | RP2350B QFN-80, 48 GPIO                  | RP2350A QFN-60, 30 GPIO                   |
 | Flash / RAM                        | 2 MB QSPI / 520 kB SRAM                  | 4 MB QSPI / 264 kB SRAM                   |
-| **CDC-ACMs**                       | 4 (RS232 / RS485 / TTL / PIO-UART)       | 2 (TTL HW / PIO-UART)                     |
+| **CDC-ACMs**                       | 4 (RS232 / RS485 / TTL / PIO-UART) †     | 2 (TTL HW / PIO-UART) †                   |
 | **UART phy-bank** (RS232/RS485/TTL)| ✅ via on-board MAX3232 + SN65HVD72       | ❌ external transceiver required           |
 | **I²C** instances                  | 2 (Qwiic 1+2 + Qwiic 3 + 4-pin header)   | 1 (header)                                |
 | **SPI** instances                  | 2 (PMOD + breakout, 3 CS lines)          | 1 (PMOD-style header)                     |
@@ -84,6 +84,12 @@ already does, via libusb in tests).
 | **I²S TX**                         | ✅ 5-pin header                           | ✅ (shares user-GPIO)                      |
 | **Status LED**                     | ✅ discrete RGB on PWM                    | ✅ single green on GP25                    |
 | **User button**                    | ✅ front panel                            | ✅ BOOTSEL                                 |
+
+† — A 5th CDC carrying `printf()` output ("RPBridge Debug Log")
+can be opted into at build time with `-DRPBRIDGE_DEBUG_CDC=ON`.
+Default builds keep the production layout; see
+[firmware/README.md §Debugging](README.md#debugging) for the
+toggle and the descriptor-shift it triggers.
 
 ---
 

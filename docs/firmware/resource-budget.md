@@ -22,11 +22,19 @@ reserve room for a future driver-native set. See
 [ADR-0004](../adr/0004-driver-priority-mode.md) for the full
 rationale.
 
-| `bConfigurationValue` | Name     | Descriptor set                           | Status                     |
-|----------------------:|----------|------------------------------------------|----------------------------|
-| `1`                   | Compat   | 4× CDC-ACM + 2× Vendor (RPBP, gs_usb)    | **Active / shipping**      |
-| `2`                   | Native   | 2× Vendor (RPBP, gs_usb) only            | Reserved — M9 milestone    |
-| `3..255`              | —        | —                                        | Available                  |
+| `bConfigurationValue` | Name     | Descriptor set                                | Status                     |
+|----------------------:|----------|-----------------------------------------------|----------------------------|
+| `1`                   | Compat   | 4× CDC-ACM + 2× Vendor (RPBP, gs_usb) †       | **Active / shipping**      |
+| `2`                   | Native   | 2× Vendor (RPBP, gs_usb) only                 | Reserved — M9 milestone    |
+| `3..255`              | —        | —                                             | Available                  |
+
+† — A 5th CDC-ACM (`"RPBridge Debug Log"`) can be enabled as a
+build-time option (`-DRPBRIDGE_DEBUG_CDC=ON`, default OFF). When
+ON, it adds CDC #4 at `bInterfaceNumber {8,9}` and shifts the two
+vendor interfaces from `{8,9}` to `{10,11}`. Configuration value,
+EP allocation for #0..#3, and the vendor EPs are unchanged. See
+the §Config 1 EP table for the alternate row, and
+[`docs/usb-vid-pid.md`](../usb-vid-pid.md) for the descriptor view.
 
 Rules:
 
@@ -65,8 +73,18 @@ control). Running inventory:
 | EP9 IN     | IN        |   64  | Bulk       | Vendor RPBP control                      |
 | EP10 OUT   | OUT       |   64  | Bulk       | Vendor gs_usb CAN                        |
 | EP10 IN    | IN        |   64  | Bulk       | Vendor gs_usb CAN                        |
+| EP11 IN ‡  | IN        |    8  | Interrupt  | CDC-ACM #4 notification (debug log)      |
+| EP12 OUT ‡ | OUT       |   64  | Bulk       | CDC-ACM #4 data         (debug log)      |
+| EP12 IN ‡  | IN        |   64  | Bulk       | CDC-ACM #4 data         (debug log)      |
 
-Totals: **10 IN + 6 OUT used, 5 IN + 9 OUT free.**
+‡ — present only when `-DRPBRIDGE_DEBUG_CDC=ON`. The vendor EPs
+(EP9, EP10) are *not* renumbered when the flag flips — only the
+interface numbers shift. This keeps host-side code that walks bulk
+endpoints stable across build variants.
+
+Totals: **10 IN + 6 OUT used (default), 12 IN + 7 OUT used with
+the debug CDC; 5 IN + 9 OUT (resp. 3 IN + 8 OUT) free for future
+streaming pipes.**
 
 ### Config 2 (Native) — reserved for M9
 

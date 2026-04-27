@@ -47,8 +47,20 @@ Globally unique by manufacturer guarantee.
 | CDC-ACM #1 | `0x02 / 0x02` | `RPBridge UART1 (RS485)` | `cdc_acm` / `usbser.sys` |
 | CDC-ACM #2 | `0x02 / 0x02` | `RPBridge UART1 (TTL)` | `cdc_acm` / `usbser.sys` |
 | CDC-ACM #3 | `0x02 / 0x02` | `RPBridge UART2 (TTL)` | `cdc_acm` / `usbser.sys` |
+| CDC-ACM #4 † | `0x02 / 0x02` | `RPBridge Debug Log` | `cdc_acm` / `usbser.sys` |
 | Vendor RPBP | `0xFF / 0x52` (`'R'`) | `RPBridge RPBP transport` | `rpbridge.ko` / WinUSB via MS OS 2.0 |
 | Vendor CAN | `0xFF / 0x43` (`'C'`) | `RPBridge CAN (gs_usb)` | mainline `gs_usb.ko` / `candle_api` |
+
+† — only present when the firmware is built with
+`-DRPBRIDGE_DEBUG_CDC=ON`. With the flag ON, the vendor interfaces
+shift their `bInterfaceNumber` from `{8, 9}` to `{10, 11}` to make
+room for the new CDC at `{8, 9}`; the `MS OS 2.0` descriptor in
+[`firmware/src/usb/ms_os_20.c`](../firmware/src/usb/ms_os_20.c)
+mirrors the same gate so Windows WinUSB auto-binding follows. The
+`iInterface` strings, the VID/PID, and the host-driver match keys
+do not change. Default builds ship without the debug CDC — see
+[`firmware/README.md`](../firmware/README.md) §Debugging for the
+build-time toggle and the stdio routing rationale.
 
 The subclass byte is the disambiguator — `'R'` for the RPBP
 transport, `'C'` for the gs_usb CAN interface. Linux's USB core
