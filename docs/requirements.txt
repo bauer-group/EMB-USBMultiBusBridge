@@ -1,0 +1,10 @@
+# Documentation build dependencies for the deploy-pages.yml workflow.
+# Dependabot keeps these in lock-step (pip ecosystem, /docs directory,
+# see .github/dependabot.yml). Loose lower bounds — the Pages build
+# pulls the latest patch each run, mkdocs-strict catches breakage.
+
+mkdocs>=1.6
+mkdocs-material>=9.5
+mkdocs-git-revision-date-localized-plugin>=1.2
+mike>=2.1
+pymdown-extensions>=10.8

@@ -37,7 +37,7 @@ jobs:
           cache: pip
 
       - name: 📚 Install dependencies
-        run: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin mike pymdown-extensions
+        run: pip install -r docs/requirements.txt
 
       - name: 🏗️ Build mkdocs
         run: mkdocs build --strict --config-file docs/mkdocs.yml
