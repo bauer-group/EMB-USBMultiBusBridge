@@ -98,8 +98,6 @@ routing.
 
 ## References
 
-- USB Implementers Forum VID directory —
-  <https://www.usb.org/sites/default/files/vendor_ids.pdf>
 - ADR-0006 — locks UART = CDC + CAN = gs_usb, defining the
   interface-class layout above.
 - ADR-0008 — locks the same-VID-PID-per-variant strategy.
