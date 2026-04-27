@@ -182,11 +182,11 @@ M5 completion. No capacity concern.
 ## 5. GPIO ownership
 
 The pin broker
-([`firmware/src/peripherals/pin_broker.{c,h}`](../../firmware/src/peripherals/pin_broker.c))
+([`firmware/src/peripherals/pin_broker.{c,h}`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/src/peripherals/pin_broker.c))
 owns the runtime ledger. Every module that takes a pin MUST call
 `pin_broker_claim()` during init; overlapping claims return
 `-RPBP_EBUSY` and fail the init. The board header
-[`firmware/boards/rpbridge_rp2354b.h`](../../firmware/boards/rpbridge_rp2354b.h)
+[`firmware/boards/rpbridge_rp2354b.h`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/boards/rpbridge_rp2354b.h)
 remains the static reference and the authoritative pinout.
 
 Live claims as of M3:

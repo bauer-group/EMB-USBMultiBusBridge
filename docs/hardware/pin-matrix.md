@@ -201,9 +201,9 @@ slot in PIO2 for it (see
 
 ## Cross-references
 
-- [`firmware/boards/rpbridge_rp2354b.h`](../../firmware/boards/rpbridge_rp2354b.h)
+- [`firmware/boards/rpbridge_rp2354b.h`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/boards/rpbridge_rp2354b.h)
   — authoritative C definitions for rev-B.
-- [`firmware/boards/rpbridge_pico2.h`](../../firmware/boards/rpbridge_pico2.h)
+- [`firmware/boards/rpbridge_pico2.h`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/boards/rpbridge_pico2.h)
   — authoritative C definitions for the Pico 2 variant.
 - [Firmware resource budget](../firmware/resource-budget.md) — PIO,
   DMA, USB endpoint and PWM-slice ledger.

@@ -12,13 +12,12 @@ copyright:        Copyright &copy; 2026 BAUER GROUP. Content licensed CC-BY-4.0.
 docs_dir: .
 site_dir: ../site
 
-# BAUER GROUP brand stylesheet (mapped from mkdocs-material variables to
-# the brand tokens at brand.docs.bauer-group.com). The file is materialised
-# into docs/assets/_bauer-brand.css by the bauer-group/automation-templates
-# mkdocs-deploy-pages reusable; a local copy is committed so `mkdocs serve`
-# during development picks up the same colours without a CI round-trip.
+# BAUER GROUP brand stylesheet — maps mkdocs-material's CSS variables
+# to the brand tokens at brand.docs.bauer-group.com (orange #FF8500
+# primary accent, warm-gray neutrals, dark warm-gray header band).
+# Pure local file; edit in place when the brand evolves.
 extra_css:
-  - assets/_bauer-brand.css
+  - assets/_bauergroup-brand.css
 
 theme:
   name: material

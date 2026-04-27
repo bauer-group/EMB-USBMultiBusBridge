@@ -55,11 +55,11 @@ Globally unique by manufacturer guarantee.
 `-DRPBRIDGE_DEBUG_CDC=ON`. With the flag ON, the vendor interfaces
 shift their `bInterfaceNumber` from `{8, 9}` to `{10, 11}` to make
 room for the new CDC at `{8, 9}`; the `MS OS 2.0` descriptor in
-[`firmware/src/usb/ms_os_20.c`](../firmware/src/usb/ms_os_20.c)
+[`firmware/src/usb/ms_os_20.c`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/src/usb/ms_os_20.c)
 mirrors the same gate so Windows WinUSB auto-binding follows. The
 `iInterface` strings, the VID/PID, and the host-driver match keys
 do not change. Default builds ship without the debug CDC — see
-[`firmware/README.md`](../firmware/README.md) #Debugging for the
+[`firmware/README.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/README.md) #Debugging for the
 build-time toggle and the stdio routing rationale.
 
 The subclass byte is the disambiguator — `'R'` for the RPBP

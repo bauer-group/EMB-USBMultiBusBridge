@@ -2,7 +2,7 @@
 
 **Status:** Accepted — 2026-04-26.
 **Implementation milestone:** M11 (PIN subsystem) and M11b (COUNTER subsystem) — see
-[`firmware/COVERAGE.md`](../../firmware/COVERAGE.md).
+[`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md).
 
 ## Context
 
