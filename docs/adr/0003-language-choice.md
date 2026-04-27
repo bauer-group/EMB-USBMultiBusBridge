@@ -143,3 +143,102 @@ The driver was reset to a clean C scaffold (commit `b9f9392`):
 `kernel-baseline/SUPPORT.md` updated: minimum 5.15 LTS
 (auxiliary_bus baseline), primary CI target 7.0 LTS
 (Ubuntu 26.04 HWE), expected-OK on 8.x.
+
+## Amendment — 2026-04-27 — Honest restatement of "why userspace stays Rust"
+
+**Status:** Accepted (clarifies the 2026-04-26 amendment above).
+
+### What changed
+
+The 2026-04-26 amendment kept the userspace tree in Rust without
+revisiting *why*. The original Rust justification (ADR top, 2026-04-22)
+was framed primarily around **memory safety in the most security-
+sensitive layer of the stack** — i.e. the kernel. With the kernel
+now in C, that flagship argument is no longer load-bearing for the
+userspace decision. Leaving the implicit "we kept Rust for safety"
+framing in place would be dishonest and would mislead future
+contributors weighing similar trade-offs.
+
+### What we actually kept Rust for
+
+The userspace tree (`userspace/rpbridge-protocol`, `rpbridge`,
+`rpbridge-ctl`, `rpbridge-bench`) stays Rust for **convenience and
+ergonomics, not safety-critical reasoning**:
+
+- **CLI tooling ergonomics.** `clap-derive` for argument parsing,
+  `tokio` for async USB I/O, `tracing` for structured logging,
+  `proptest` for wire-format property tests. The C equivalents
+  (`getopt_long` / `argp` / libevent / hand-rolled property
+  generators) are workable but objectively more verbose for the
+  same job.
+- **Sunk cost is real but not decisive.** ~3 000 LoC of working
+  Rust + 46 inline tests for the wire layer. Rewriting in C is
+  1–2 days of work, not the deciding factor — the deciding
+  factor is everything below.
+- **The `rpbridge-protocol` crate is `no_std`-capable.** That
+  property has actual reuse value: the same wire builders /
+  parsers can be linked into a future Rust-on-MCU host-side
+  emulator, into a `cargo-bench` harness, or into bindings for
+  Tauri / Yew dashboards without re-implementing the protocol.
+  A C library has the same reuse potential through cbindgen
+  in the other direction, but the no_std affordance is a Rust
+  property.
+- **Userspace memory safety is nice-to-have.** A USB CLI
+  receiving malformed device responses crashes the CLI, not the
+  kernel — the consequence of a bug is a non-zero exit code,
+  not a privilege escalation. We do not pretend this is a
+  load-bearing argument; it is a tail-end benefit.
+
+### What we explicitly accept as cost
+
+- **Two-language stack.** Contributors fixing a bug that crosses
+  the firmware-driver-userspace boundary need to read C and Rust.
+  Onboarding costs are higher than a single-language project.
+- **Two-toolchain Docker image.** rustup at `/opt/cargo` adds
+  ~250 MB and ~90 s to the first image build, on top of the gcc
+  / kbuild floor. Subsequent builds are layer-cached so the cost
+  is paid only on Dockerfile changes.
+- **Bindings to other languages cost an extra translation step.**
+  Future Python / .NET / Go bindings will go through cbindgen +
+  a generated C header rather than direct FFI off a C library.
+  This is an acceptable detour, not a free one.
+
+### Why not full-C-sweep
+
+A full rewrite of the userspace tree in C was considered as the
+more consistent option (Option B in the 2026-04-27 architecture
+review). It was rejected because:
+
+- The Rust userspace works today. 0/0 build, 46 wire tests pass.
+  Discarding that to re-derive the same layer in C would be
+  motion without forward progress.
+- The original ADR-0003 selection of Rust for userspace
+  ("primary implementation, with FFI bindings on top") still
+  holds on its own merits — it just no longer leans on the
+  kernel-safety framing.
+- The CLI / async-USB ergonomics gap between Rust and C is
+  measurable and the project's userspace tooling is small
+  enough that the gap dominates over consistency-with-the-
+  kernel-stack arguments.
+
+### Future revisit clauses
+
+This amendment does NOT revisit the kernel side. The driver
+stays C; the path back to Rust there is gated on R4L API
+stability (see the 2026-04-26 amendment).
+
+The userspace decision should be revisited if any of the
+following hold:
+
+- Bindings to ≥ 3 other languages get serious traction (the
+  cbindgen-detour cost compounds).
+- A future contributor profile shifts from "Linux kernel +
+  embedded" (where Rust skill is rarer) to "applications
+  developer" (where it is common) — i.e. the language-overlap
+  cost flips sign.
+- The userspace tree grows beyond the current ~3 500 LoC scope
+  to a degree where "rewriting in C is 1-2 days" becomes "is
+  1-2 weeks" and the lock-in becomes harder to reverse.
+
+Until any of those triggers fire, the userspace-Rust + kernel-C
+split is the operative architecture.
