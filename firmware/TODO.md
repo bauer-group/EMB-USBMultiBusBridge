@@ -508,14 +508,15 @@ logic-capture / RS485 precision-DE applets.
 Things that must be checked off before any public hardware shipment.
 Tracking lives here so we don't ship a board with a placeholder.
 
-- [ ] **USB VID/PID** — `RPBRIDGE_USB_PID = 0xFFFE` is from the
-      pid.codes testing range and collides with every other
-      developer's testing-range device. File a pid.codes
-      registration, replace the constant in
-      `firmware/src/usb/usb_descriptors.c` AND
-      `driver/src/core_driver.rs`. Full checklist + rationale in
-      [`docs/usb-vid-pid.md`](../docs/usb-vid-pid.md).
+- [x] **USB VID/PID** — production allocation `0545:0101` (BAUER
+      GROUP / RPBridge) wired in firmware (`usb_descriptors.c`),
+      driver (`driver/src/rpbp.h`), userspace (`rpbridge/src/lib.rs`),
+      and udev rules on 2026-04-27. See
+      [`docs/usb-vid-pid.md`](../docs/usb-vid-pid.md) for the
+      lock-step list and interface-class layout.
 - [ ] **bcdDevice** — bump from `0x0100` to mark first
       production-ID release.
-- [ ] **udev rules + umockdev recording** — regenerate after the
-      real PID lands so distribution packages match.
+- [ ] **udev rules + umockdev recording** — regenerate the
+      umockdev fixture (rules already match the production VID)
+      against real hardware so the replay-CI step picks up
+      0545:0101 traffic.

@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * KUnit test module for rpbridge.ko. Exercises the module-load +
- * probe paths that cannot be covered by the inline Rust unit tests:
+ * probe paths that complement the inline wire-level tests:
  *
  *   1. Module load / unload is side-effect-free.
  *   2. The VID/PID match table is non-empty and points at the
- *      pid.codes testing range we reserve for development.
- *   3. The RPBP CRC-32C implementation in the Rust side produces
- *      the RFC 3720 reference vector 0xE3069283 for "123456789".
+ *      production pair 0545:0101 (BAUER GROUP / RPBridge).
+ *   3. The RPBP CRC-32C implementation produces the RFC 3720
+ *      reference vector 0xE3069283 for "123456789".
  *
- * These tests are C because KUnit-for-Rust is not yet stable across
- * every R4L tree we want to cover (6.13+). The CRC agreement is
- * verified against an exported symbol from the Rust driver:
+ * The CRC agreement is verified against the rpbp_crc32c_update
+ * symbol exported from the C driver:
  *
- *   extern u32 rpbridge_crc32c_slice(const u8 *buf, size_t len);
+ *   extern u32 rpbp_crc32c_update(u32 crc, const u8 *buf, size_t len);
  *
  * Build with:
  *   make -C /path/to/kernel M=$PWD kunit CONFIG_KUNIT=y CONFIG_RPBRIDGE_KUNIT=y

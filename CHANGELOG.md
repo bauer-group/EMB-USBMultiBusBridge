@@ -10,6 +10,27 @@ combinations.
 
 ## [Unreleased]
 
+### Changed
+
+- **USB VID/PID — production allocation.** Wired the BAUER-GROUP-
+  assigned production identifiers `0545:0101` (allocated 2026-04-27)
+  into the firmware descriptors (`firmware/src/usb/usb_descriptors.c`),
+  the kernel driver's USB id_table (`driver/src/rpbp.h`), the udev
+  rules (`driver/udev/70-rpbridge.rules`), and the userspace
+  client's defaults (`userspace/rpbridge/src/lib.rs`). Replaces the
+  pre-production pid.codes testing-range pair `1209:FFFE`. Closes
+  the corresponding pre-production gate; `firmware/COVERAGE.md` and
+  `firmware/TODO.md` updated accordingly.
+- **USB descriptor strings tightened to production conventions.**
+  `iProduct` shortened from "RPBridge Multi-Bus Developer Bridge"
+  to "RPBridge" (project brand name; fits `lsusb` columns).
+  `iSerialNumber` gained an `RPB-` prefix in front of the 16-hex
+  W25Q-flash-chip-ID expansion — visually identifies the device in
+  `lsusb -v` output and stays under 31 chars.
+  Per-interface `iInterface` labels rewritten to use the consistent
+  `RPBridge` prefix and more specific tags ("RPBridge RPBP
+  transport", "RPBridge CAN (gs_usb)").
+
 ### Added
 
 - Repository scaffolding: firmware (pico-sdk pinned to `2.1.1`), Linux C

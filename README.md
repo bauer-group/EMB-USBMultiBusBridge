@@ -7,14 +7,14 @@
 > This project is in **alpha**. The firmware is feature-complete and
 > CI-green on both supported boards (see
 > [`firmware/COVERAGE.md`](firmware/COVERAGE.md) for the
-> evidence-linked status matrix), but the device has **not** yet
-> shipped under a final USB VID/PID — the current values are from
-> the `pid.codes` testing range and **must not be used in
-> production hardware**. The Linux kernel driver's wire layer is
-> done; its `auxiliary_bus` adapters are gated on Rust-for-Linux
-> bindings stabilising upstream (see
-> [ADR-0007](docs/adr/0007-ffi-bindings-interim.md)). Three
-> pre-production gates remain open — they are tracked in
+> evidence-linked status matrix). The production USB VID/PID
+> (`0545:0101` — BAUER GROUP / RPBridge, allocated 2026-04-27) is
+> wired into the firmware, the C kernel driver, the userspace
+> defaults, and the udev rules. The Linux kernel driver is plain
+> C against the stable kernel-module ABI (see
+> [ADR-0003 §Amendment](docs/adr/0003-language-choice.md#amendment--2026-04-26--driver-reverted-to-c)
+> for why we pivoted away from Rust-for-Linux). Two pre-production
+> gates remain open — they are tracked in
 > [`firmware/COVERAGE.md` §Pre-production](firmware/COVERAGE.md#pre-production-gates).
 > Expect APIs and the wire format to be additively-stable from
 > here, but treat anything in this repo as alpha until those gates
@@ -94,18 +94,26 @@ the protocol-level status. **Source of truth:**
 [`firmware/COVERAGE.md`](firmware/COVERAGE.md) for the firmware,
 [`driver/TODO.md`](driver/TODO.md) for the Rust driver.
 
-| Component                      | Status                                                                                                |
-|--------------------------------|-------------------------------------------------------------------------------------------------------|
-| **RPBP wire format**           | Frozen at v1; additive-only changes from here (MAJOR bump required for breaking change)                 |
-| **Firmware (rev-B)**           | Feature-complete (11 subsystems, on-device SELFTEST, host-side roundtrip CI). See COVERAGE.md           |
-| **Firmware (Pi Pico 2)**       | Feature-complete (subset variant); per-variant CI matrix green                                          |
-| **Linux driver — wire layer**  | Complete in Rust ([`driver/src/`](driver/src/))                                                       |
-| **Linux driver — adapters**    | In progress — gated on Rust-for-Linux subsystem bindings (gpio_chip, i2c_adapter, …) — ADR-0007       |
-| **CAN via gs_usb**             | Works today via mainline kernel `gs_usb.ko` — no out-of-tree driver needed                              |
-| **Userspace `rpbridge-ctl`**   | Scaffolding present                                                                                     |
-| **Documentation**              | Cross-linked: protocol spec, ADRs, per-subsystem wire docs, pin matrix, coverage matrix                 |
-| **Hardware (rev-B)**           | Schematic + placement done; waiting on PID allocation before first board run                            |
-| **Pre-production gates**       | 3 open: USB VID/PID, bcdDevice bump, udev regen — see [COVERAGE §Pre-production](firmware/COVERAGE.md#pre-production-gates) |
+- **RPBP wire format** — frozen at v1; additive-only changes from
+  here (MAJOR bump required for breaking change).
+- **Firmware (rev-B)** — feature-complete: 11 subsystems, on-device
+  SELFTEST, host-side roundtrip CI.
+- **Firmware (Pi Pico 2)** — feature-complete subset variant;
+  per-variant CI matrix green.
+- **Linux driver** — C, 9 subsystem children via `auxiliary_bus`.
+  Compiles 0/0 against Linux 7.0 (Ubuntu 26.04 LTS HWE). See
+  ADR-0003.
+- **CAN via gs_usb** — works via mainline kernel `gs_usb.ko`; no
+  out-of-tree driver needed.
+- **Userspace `rpbridge-ctl`** — scaffolding present; per-subsystem
+  wire layers complete (46 tests).
+- **Documentation** — cross-linked: protocol spec, ADRs,
+  per-subsystem wire docs, pin matrix, coverage matrix.
+- **Hardware (rev-B)** — schematic + placement done; production
+  VID/PID `0545:0101` allocated and wired.
+- **Pre-production gates** — 2 open: `bcdDevice` bump, umockdev
+  fixture against real-hw traffic. See
+  [COVERAGE](firmware/COVERAGE.md#pre-production-gates).
 
 Architecture decisions are tracked under
 [`docs/adr/`](docs/adr/) — a living list explaining *why* the

@@ -2,10 +2,10 @@
 
 !!! warning "Alpha — pre-production"
     RPBridge is in **alpha**. The firmware feature set is complete and
-    self-tested on both supported boards, but the project still uses
-    placeholder USB VID/PID, the C kernel driver has not yet been
-    validated against real hardware, and the udev rule set is not yet
-    final. **Do not deploy on production hosts.** See
+    self-tested on both supported boards, the production USB VID/PID
+    (0545:0101) is allocated and wired in, but the C kernel driver has
+    not yet been validated against real hardware and the udev rule set
+    is not yet final. **Do not deploy on production hosts.** See
     [`firmware/COVERAGE.md`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/firmware/COVERAGE.md)
     for the live status matrix.
 

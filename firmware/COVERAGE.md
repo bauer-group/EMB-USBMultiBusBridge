@@ -120,13 +120,10 @@ These items **must** be closed before any public hardware shipment.
 Tracked here separately from the engineering backlog so they don't
 get lost in the noise of optional follow-ups.
 
-- ❌ **USB VID/PID** — current `0xFFFE` is the pid.codes "testing"
-  range and would collide with anyone else's testing-range device on
-  the same Linux host. File a `pid.codes` registration, replace the
-  constants in
-  [`firmware/src/usb/usb_descriptors.c`](src/usb/usb_descriptors.c)
-  AND [`driver/src/core_driver.rs`](../driver/src/core_driver.rs).
-  Full checklist + rationale: [`docs/usb-vid-pid.md`](../docs/usb-vid-pid.md).
+- ✅ **USB VID/PID** — production allocation `0545:0101` (BAUER GROUP
+  / RPBridge) wired in firmware, driver, userspace defaults, and
+  udev rules on 2026-04-27. See [`docs/usb-vid-pid.md`](../docs/usb-vid-pid.md)
+  for the lock-step list + interface-class layout.
 - ❌ **`bcdDevice`** — bump from `0x0100` to mark the first
   production-ID release.
 - ❌ **udev rules + umockdev recordings** — regenerate after the

@@ -67,8 +67,9 @@ host-specific data.
   feature flag, renamed field).
 - The USB descriptor set changes (new interface, string-index
   reshuffle, MS OS 2.0 GUID change).
-- The device's VID/PID is reassigned (we're on pid.codes 1209:FFFE
-  during dev; a real allocation will be a recording refresh).
+- The device's VID/PID is reassigned (production today is 0545:0101,
+  allocated 2026-04-27; any future re-allocation requires a
+  recording refresh).
 
 If none of the above changed, an existing recording is valid
 indefinitely — USB descriptors are immutable for the life of a

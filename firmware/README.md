@@ -143,7 +143,7 @@ No pico-sdk, no arm-none-eabi-gcc. See [`tests/host/README.md`](tests/host/READM
 ## USB layout at a glance
 
 ```text
-VID 0x1209 / PID 0xFFFE (pid.codes testing range)
+VID 0x0545 / PID 0x0101 (BAUER GROUP — RPBridge, allocated 2026-04-27)
 
 Interface  Class              Purpose                        Host driver
 ─────────  ─────────────────  ─────────────────────────────  ─────────────────────────
