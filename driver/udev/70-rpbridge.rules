@@ -6,11 +6,12 @@
 # path under /lib/udev/rules.d/ if installed via a .deb/.rpm package),
 # then `sudo udevadm control --reload && sudo udevadm trigger`.
 #
-# VID/PID below is a pid.codes test-range allocation and MUST be replaced
-# with the project's real allocation before a public release.
+# Production VID/PID: 0545:0101 (BAUER GROUP — RPBridge), allocated
+# 2026-04-27. Keep in lock-step with firmware/src/usb/usb_descriptors.c
+# and driver/src/rpbp.h.
 
 # Access + stable symlink for the composite RPBridge device.
-SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0545", ATTRS{idProduct}=="0101", \
     MODE="0660", GROUP="plugdev", TAG+="uaccess", \
     SYMLINK+="rpbridge%n"
 
@@ -37,25 +38,25 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", \
 # (printf) is wired to UART1 on the 5-pin debug header instead —
 # see firmware/README.md §Debugging.
 SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
-    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{idVendor}=="0545", ATTRS{idProduct}=="0101", \
     ATTRS{bInterfaceNumber}=="00", \
     MODE="0660", GROUP="dialout", \
     SYMLINK+="rpbridge-uart1-rs232"
 
 SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
-    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{idVendor}=="0545", ATTRS{idProduct}=="0101", \
     ATTRS{bInterfaceNumber}=="02", \
     MODE="0660", GROUP="dialout", \
     SYMLINK+="rpbridge-uart1-rs485"
 
 SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
-    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{idVendor}=="0545", ATTRS{idProduct}=="0101", \
     ATTRS{bInterfaceNumber}=="04", \
     MODE="0660", GROUP="dialout", \
     SYMLINK+="rpbridge-uart1-ttl"
 
 SUBSYSTEM=="tty", SUBSYSTEMS=="usb", \
-    ATTRS{idVendor}=="1209", ATTRS{idProduct}=="fffe", \
+    ATTRS{idVendor}=="0545", ATTRS{idProduct}=="0101", \
     ATTRS{bInterfaceNumber}=="06", \
     MODE="0660", GROUP="dialout", \
     SYMLINK+="rpbridge-uart2"

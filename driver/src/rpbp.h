@@ -194,15 +194,19 @@ enum rpbp_status {
 /* ───── Vendor IDs ───────────────────────────────────────────────── */
 
 /*
- * PRE-PRODUCTION VID/PID — keep in lock-step with
- * firmware/src/usb/usb_descriptors.c. The current PID is from the
- * pid.codes testing range (0xFFF0..0xFFFF) and WILL collide with
- * any other developer's testing device on the same host. Tracked in
- * docs/usb-vid-pid.md and firmware/TODO.md. Replace before shipping
- * production hardware.
+ * Production VID/PID assigned to BAUER GROUP for the RPBridge
+ * (allocated 2026-04-27). Keep these constants in lock-step with:
+ *
+ *   firmware/src/usb/usb_descriptors.c    (RPBRIDGE_USB_VID / _PID)
+ *   userspace/rpbridge/src/lib.rs         (DEFAULT_VID  / DEFAULT_PID)
+ *   driver/udev/70-rpbridge.rules         (ATTR{idVendor} / idProduct)
+ *
+ * A mismatch silently breaks the auto-bind path: the kernel sees
+ * an unmatched device, never fires probe(), and userspace tooling
+ * can't find a controller to talk to.
  */
-#define RPBRIDGE_USB_VID         0x1209u   /* pid.codes Open Hardware VID */
-#define RPBRIDGE_USB_PID         0xFFFEu   /* TESTING-RANGE — replace pre-release */
+#define RPBRIDGE_USB_VID         0x0545u   /* BAUER GROUP — production VID */
+#define RPBRIDGE_USB_PID         0x0101u   /* RPBridge — production PID    */
 
 /*
  * Map an RPBP status code to a Linux errno.
