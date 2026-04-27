@@ -59,13 +59,13 @@ channel (A=0, B=1).
 | GP6  | RS485 DE (PIO-timed)   | int — SN65HVD72               | `IO`, `PIO0/1/2`                              |
 | GP7  | RS485 EN (shutdown)    | int — SN65HVD72               | `IO`                                          |
 | GP8  | RS232 /SHDN            | int — MAX3232                 | `IO`                                          |
-| GP9  | SPI0 user-IRQ          | PMOD                          | `IO`, `PIO`                                   |
+| GP9  | (free, PMOD spare)     | PMOD                          | `IO`, `PWM 4B`, `PIO`                         |
 | GP10 | SPI1 SCK               | SPI1 header                   | `IO`, `PWM 5A`, `PIO`                         |
 | GP11 | SPI1 MOSI              | SPI1 header                   | `IO`, `PWM 5B`, `PIO`                         |
-| GP12 | SPI1 MISO              | SPI1 header                   | `IO`, `PWM 6A`, `PIO`, `UART0 TX`             |
-| GP13 | SPI1 CS0               | SPI1 header                   | `IO`, `PWM 6B`, `PIO`, `UART0 RX`             |
-| GP14 | SPI1 CS1               | SPI1 header                   | `IO`, `PWM 7A`, `PIO`                         |
-| GP15 | SPI1 CS2               | SPI1 header                   | `IO`, `PWM 7B`, `PIO`                         |
+| GP12 | SPI1 MISO              | SPI1 header                   | `IO`, `PWM 6A`, `PIO`                         |
+| GP13 | (user-managed CS)      | SPI1 header                   | `IO`, `PWM 6B`, `PIO`                         |
+| GP14 | (user-managed CS)      | SPI1 header                   | `IO`, `PWM 7A`, `PIO`                         |
+| GP15 | (user-managed CS)      | SPI1 header                   | `IO`, `PWM 7B`, `PIO`                         |
 | GP16 | SPI0 MISO              | PMOD                          | `IO`, `PWM 0A`, `PIO`, `UART0 TX`             |
 | GP17 | SPI0 CS                | PMOD                          | `IO`, `PWM 0B`, `PIO`, `UART0 RX`             |
 | GP18 | SPI0 SCK               | PMOD                          | `IO`, `PWM 1A`, `PIO`                         |
@@ -108,41 +108,64 @@ channel (A=0, B=1).
 
 ## RPBridge Pi Pico 2 (`rpbridge_pico2`, RP2350A QFN-60)
 
-30 GPIO total (GP0..GP29). Same ADC channel mapping as rev-B.
-GP25 is the on-board green LED. There is no phy bank — RS232 / RS485
-require an external transceiver wired by the user; the firmware ships
-the relevant `RPBRIDGE_HAVE_*_PHY` flags **off** by default.
+30 GPIO total (GP0..GP29). Same ADC channel mapping as rev-B
+(GP26..GP29). GP25 is the on-board green LED.
 
-| GPIO | Default function    | Destination                     | Reconfigurable to                            |
-|-----:|:--------------------|:--------------------------------|:---------------------------------------------|
-| GP0  | UART0 TX (TTL)      | header                          | `IO`, `PIO`                                   |
-| GP1  | UART0 RX (TTL)      | header                          | `IO`, `PIO`                                   |
-| GP2  | I²C0 SDA            | header                          | `IO`, `PWM 1A`, `PIO`                         |
-| GP3  | I²C0 SCL            | header                          | `IO`, `PWM 1B`, `PIO`                         |
-| GP4  | UART1 TX (debug)    | none — pin pad                  | `IO`, `PIO`                                   |
-| GP5  | UART1 RX (debug)    | none — pin pad                  | `IO`, `PIO`                                   |
-| GP6  | SPI0 SCK            | header                          | `IO`, `PWM 3A`, `PIO`                         |
-| GP7  | SPI0 MOSI           | header                          | `IO`, `PWM 3B`, `PIO`                         |
-| GP8..GP15 | **user GPIO/PWM/PIO** | header                    | full mux: `IO` + `PWM` + `I²C1` + `SPI1` + `PIO` (per silicon table) |
-| GP16 | SPI0 MISO           | header                          | `IO`, `PWM 0A`, `PIO`, `UART0 TX`             |
-| GP17 | SPI0 CS             | header                          | `IO`, `PWM 0B`, `PIO`, `UART0 RX`             |
-| GP18 | PIO-UART #2 TX      | header                          | `IO`, `PIO1`                                  |
-| GP19 | PIO-UART #2 RX      | header                          | `IO`, `PIO1`                                  |
-| GP20 | CAN TX (`can2040`)  | header                          | `IO`, `PIO0`                                  |
-| GP21 | CAN RX (`can2040`)  | header                          | `IO`, `PIO0`                                  |
-| GP22 | reserved            | —                               | `IO`, `PWM 3A`, `PIO`                         |
-| GP25 | **status LED (green)** | on-board LED                 | `IO`, `PWM 4B` *(used for LED)*               |
-| GP26 | **ADC0 (A0)**       | A0                              | `IO`, `PWM 5A`                                |
-| GP27 | **ADC1 (A1)**       | A1                              | `IO`, `PWM 5B`                                |
-| GP28 | **ADC2 (A2)**       | A2                              | `IO`, `PWM 6A`                                |
-| GP29 | **ADC3 (A3)**       | A3                              | `IO`, `PWM 6B`                                |
+There is no on-board phy bank — RS232 / RS485 require an external
+transceiver wired by the user; the firmware ships
+`RPBRIDGE_HAVE_RS232_PHY` and `RPBRIDGE_HAVE_RS485_PHY` **off** by
+default. This collapses the USB descriptor from 4 CDC-ACMs to 2
+(TTL on UART0 hardware + UART2 PIO-UART). I²C bus 1 and SPI bus 1
+also drop out (no QFN-60 pads); see
+`firmware/boards/rpbridge_pico2.h` for the authoritative HAVE-flag set.
+
+| GPIO | Default function          | Destination                     | Reconfigurable to                                      |
+|-----:|:--------------------------|:--------------------------------|:--------------------------------------------------------|
+| GP0  | UART0 TX (TTL)            | user header                     | `IO`, `PIO`                                              |
+| GP1  | UART0 RX (TTL)            | user header                     | `IO`, `PIO`                                              |
+| GP2  | I²C0 SDA                  | user header                     | `IO`, `PWM 1A`, `PIO`                                    |
+| GP3  | I²C0 SCL                  | user header                     | `IO`, `PWM 1B`, `PIO`                                    |
+| GP4  | UART1 TX (debug stdio)    | pin pad                         | `IO`, `PIO`                                              |
+| GP5  | UART1 RX (debug stdio)    | pin pad                         | `IO`, `PIO`                                              |
+| GP6  | **PIO-UART #2 TX**        | user header                     | `IO`, `PIO`                                              |
+| GP7  | **PIO-UART #2 RX**        | user header                     | `IO`, `PIO`                                              |
+| GP8  | I²S BCLK *(PIO2 SM 2)*    | user header (broker-shared)     | `IO`, `PWM 4A`, `PIO`                                    |
+| GP9  | I²S LRCLK *(PIO2 SM 2)*   | user header (`= BCLK + 1`)      | `IO`, `PWM 4B`, `PIO`                                    |
+| GP10 | user GPIO/PWM             | user header                     | `IO`, `PWM 5A`, `PIO`                                    |
+| GP11 | user GPIO/PWM             | user header                     | `IO`, `PWM 5B`, `PIO`                                    |
+| GP12 | 1-Wire data *(PIO1 SM 2)* | user header (broker-shared)     | `IO`, `PWM 6A`, `PIO`                                    |
+| GP13 | I²S DOUT *(PIO2 SM 2)*    | user header                     | `IO`, `PWM 6B`, `PIO`                                    |
+| GP14 | WS2812 data *(PIO2 SM 0)* | user header                     | `IO`, `PWM 7A`, `PIO`                                    |
+| GP15 | DMX-512 TX *(PIO2 SM 1)*  | user header                     | `IO`, `PWM 7B`, `PIO`                                    |
+| GP16 | SPI0 MISO                 | user header                     | `IO`, `PWM 0A`, `PIO`, `UART0 TX`                        |
+| GP17 | SPI0 CS                   | user header                     | `IO`, `PWM 0B`, `PIO`, `UART0 RX`                        |
+| GP18 | SPI0 SCK                  | user header                     | `IO`, `PWM 1A`, `PIO`                                    |
+| GP19 | SPI0 MOSI                 | user header                     | `IO`, `PWM 1B`, `PIO`                                    |
+| GP20 | CAN TX (`can2040`)        | user header                     | `IO`, `PIO0`                                             |
+| GP21 | CAN RX (`can2040`)        | user header                     | `IO`, `PIO0`                                             |
+| GP22 | reserved                  | —                               | `IO`, `PWM 3A`, `PIO`                                    |
+| GP23 | reserved                  | —                               | `IO`, `PWM 3B`, `PIO`                                    |
+| GP24 | VBUS sense                | int — VSYS divider              | `ADC` (if rerouted), `IO`                                |
+| GP25 | **status LED (green)**    | on-board LED                    | `IO`, `PWM 4B` *(currently used for LED)*                |
+| GP26 | **ADC0 (A0)**             | user header                     | `IO`, `PWM 5A`                                           |
+| GP27 | **ADC1 (A1)**             | user header                     | `IO`, `PWM 5B`                                           |
+| GP28 | **ADC2 (A2)**             | user header                     | `IO`, `PWM 6A`                                           |
+| GP29 | **ADC3 (A3)**             | user header                     | `IO`, `PWM 6B`                                           |
 
 **Pico 2 specifics:**
-- The RGB LED on rev-B becomes a **single-channel green LED on GP25**;
-  the firmware's LED scheduler renders monochrome on this variant
-  (`RPBRIDGE_LED_MONO` build flag).
-- 1-Wire and I²S share GP-numbers with the user GPIO header; the
-  broker arbitrates if both subsystems are enabled at runtime.
+
+- The rev-B RGB LED collapses to the **single green LED on GP25**.
+  `RPBRIDGE_HAVE_RGB_LED=0` selects the mono-LED code path in
+  `firmware/src/main.c`: brightness = max(r,g,b) folded through
+  the green calibration.
+- The PIO applets (1-Wire, WS2812, DMX, I²S) share the user-GPIO
+  whitelist (GP8..GP15). The pin broker rejects overlapping claims
+  at runtime, so enabling I²S + WS2812 + 1-Wire + DMX simultaneously
+  occupies exactly the 6 pins listed above and leaves GP10/GP11
+  free for plain GPIO/PWM use.
+- `RPBRIDGE_HAVE_I2C1` and `RPBRIDGE_HAVE_SPI1` are both `0` —
+  the QFN-60 package doesn't expose the GP-numbers those buses
+  would need.
 
 ---
 
