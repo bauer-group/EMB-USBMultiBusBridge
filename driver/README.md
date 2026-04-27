@@ -14,9 +14,10 @@ core:
 | `rpbridge-pwm`       | `pwm` sysfs                      | `/sys/class/pwm/…`      |
 | `rpbridge-iio`       | `iio` / `iio_buffer`             | `/sys/bus/iio/devices/…` |
 
-The UART side (3× CDC-ACM) is handled by mainline `usbser`. The CAN
-side is handled by mainline `gs_usb`. Neither lives in this module —
-both drivers already exist upstream and work out of the box with the
+The UART side (4× CDC-ACM — three UART1 transceiver banks plus
+UART2 via PIO) is handled by mainline `cdc_acm`. The CAN side is
+handled by mainline `gs_usb`. Neither lives in this module — both
+drivers already exist upstream and work out of the box with the
 RPBridge firmware's descriptors.
 
 ## Kernel baseline

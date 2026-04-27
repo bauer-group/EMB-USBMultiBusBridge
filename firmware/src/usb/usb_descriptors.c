@@ -5,16 +5,29 @@
  * USB composite device descriptors for RPBridge.
  *
  * Interface layout (bInterfaceNumber → purpose):
- *   0,1   CDC-ACM #0           "rpbridge UART 1"
- *   2,3   CDC-ACM #1           "rpbridge UART 2"
- *   4,5   CDC-ACM #2           "rpbridge Debug Log"
- *   6     Vendor (WinUSB)      "rpbridge Control" — RPBP transport
- *   7     Vendor (gs_usb)      "rpbridge CAN"     — SocketCAN-compatible
+ *   0,1   CDC-ACM #0           "RPBridge UART1 (RS232)"  — via MAX3232
+ *   2,3   CDC-ACM #1           "RPBridge UART1 (RS485)"  — via SN65HVD72
+ *   4,5   CDC-ACM #2           "RPBridge UART1 (TTL)"    — direct drive
+ *   6,7   CDC-ACM #3           "RPBridge UART2 (TTL)"    — PIO-UART #2
+ *   8     Vendor (WinUSB)      "RPBridge RPBP transport" — bulk control
+ *   9     Vendor (gs_usb)      "RPBridge CAN (gs_usb)"   — SocketCAN-compat
  *
- * VID/PID — see the §VID / PID block below for the production
- * allocation status. The current values are pre-production and MUST
- * NOT ship in a public hardware release without the pid.codes
- * registration entry being filed first. See docs/usb-vid-pid.md.
+ * The four CDCs are all data channels for user-facing UART traffic.
+ * Three of them are alternate views of the same UART1 hardware peripheral
+ * routed through different transceivers (MAX3232 / SN65HVD72 / direct
+ * TTL); the firmware switches the active transceiver bank based on
+ * which CDC currently asserts DTR=1. The fourth CDC drives UART2 via a
+ * PIO state-machine on dedicated pins.
+ *
+ * The firmware does NOT expose a USB debug-log CDC. The TinyUSB stdio
+ * backend is intentionally disabled (see firmware/CMakeLists.txt:
+ * pico_enable_stdio_usb(... 0)) — printf() is routed to the UART1
+ * hardware peripheral on the 5-pin debug header (GP4/GP5) instead.
+ *
+ * VID/PID — see the §VID / PID block below. The pair 0x0545:0x0101 is
+ * the production allocation made to BAUER GROUP on 2026-04-27. Keep
+ * the kernel driver, udev rules, and userspace client in lock-step
+ * with this pair (see the §VID / PID block for the lock-step list).
  */
 
 #include "tusb.h"

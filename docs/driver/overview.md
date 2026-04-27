@@ -18,9 +18,10 @@ Linux subsystem core.
 | `rpbridge-onewire`   | `w1_bus_master`                  | `/sys/bus/w1/`           |
 | `rpbridge-i2s`       | misc cdev                        | `/dev/rpbridge-i2s<N>`   |
 
-The UART side (3× CDC-ACM) is handled by mainline `cdc_acm`. The
-CAN side is handled by mainline `drivers/net/can/usb/gs_usb.ko`.
-Neither lives in this module.
+The UART side (4× CDC-ACM — three UART1 transceiver banks plus
+UART2 via PIO) is handled by mainline `cdc_acm`. The CAN side is
+handled by mainline `drivers/net/can/usb/gs_usb.ko`. Neither
+lives in this module.
 
 ## Why C
 

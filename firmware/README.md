@@ -102,9 +102,12 @@ to see `printf()` output.
 
 `stdio_usb` is intentionally disabled — enabling it would spawn a
 private CDC-ACM interface that collides with our hand-built composite
-(3× CDC + 2× vendor). A future revision can expose log output on
-CDC-ACM #2 ("rpbridge Debug Log") by writing directly into
-`tud_cdc_n_write(2, ...)` from the firmware.
+(4× CDC + 2× vendor) and pushes the firmware past TinyUSB's class-
+instance limit. The four CDCs are all data channels for user-facing
+UART traffic (UART1 × three transceiver banks: RS232 / RS485 / TTL,
+plus UART2 via PIO); the debug log stays on the dedicated UART1
+hardware peripheral on the 5-pin header so it never competes with
+user data for USB bandwidth.
 
 ### SWD
 

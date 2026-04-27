@@ -262,10 +262,13 @@ target_link_libraries(rpbridge PRIVATE
 
 # stdio routes to UART1 on the 5-pin debug header (GP4/GP5). Enabling
 # pico's stdio_usb would try to add its own CDC-ACM class instance —
-# that conflicts with our hand-built composite descriptor (3 CDCs +
-# 2 vendors). When a CDC-based debug log is wanted, the firmware writes
-# directly to tud_cdc_n_write() on CDC-ACM index 2 ("rpbridge Debug
-# Log") — see src/usb/cdc_glue.c once the CDC glue module lands.
+# that conflicts with our hand-built composite descriptor (4 CDCs +
+# 2 vendors) and pushes the firmware past TinyUSB's class-instance
+# limit. The four CDCs are all data channels for user-facing UART
+# traffic (UART1 × three transceiver banks RS232/RS485/TTL plus
+# UART2 via PIO); the debug log stays on the dedicated UART1
+# hardware peripheral on the 5-pin header so it never competes
+# with user data for USB bandwidth.
 pico_enable_stdio_usb(rpbridge 0)
 pico_enable_stdio_uart(rpbridge 1)
 

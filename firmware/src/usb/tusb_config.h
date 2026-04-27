@@ -5,11 +5,24 @@
  * TinyUSB configuration for the RPBridge composite device.
  *
  * The composite consists of:
- *   - 3× CDC-ACM (user UART #1, user UART #2, debug log)
+ *   - 4× CDC-ACM, all data channels for user-facing UART traffic:
+ *        #0 = UART1 via MAX3232 (RS232 levels)
+ *        #1 = UART1 via SN65HVD72 (RS485 differential bus)
+ *        #2 = UART1 direct 3.3 V CMOS (TTL)
+ *        #3 = UART2 via PIO (TTL only — no transceiver)
+ *      The firmware switches the UART1 transceiver bank based on
+ *      which of CDC #0/#1/#2 currently holds DTR=1; #3 is an
+ *      independent PIO-driven UART.
  *   - 1× Vendor interface bound via MS OS 2.0 -> WinUSB on Windows,
  *        used as the RPBP transport (bulk IN/OUT, 64 B FS packets).
  *   - 1× Vendor interface speaking gs_usb for CAN (mainline Linux driver
  *        binds automatically, Windows tools via candle_api).
+ *
+ * The firmware does NOT expose a USB debug-log CDC. stdio (printf)
+ * is wired to UART1 hardware peripheral (GP4/GP5) on the 5-pin
+ * debug header, accessed via picoprobe / USB-serial dongle / SWD-
+ * UART tooling. See firmware/CMakeLists.txt's pico_enable_stdio_*
+ * lines for the rationale.
  */
 
 #ifndef TUSB_CONFIG_H

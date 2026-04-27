@@ -47,7 +47,7 @@ be tested in isolation.
 │  PIO2: 1-Wire, WS2812, spare applets                         │
 │                                                              │
 │  Transceivers: SN65HVD230 (CAN) · SN65HVD72 (RS485)          │
-│                MAX3232 (RS232) · 3× CDC-ACM (host side)      │
+│                MAX3232 (RS232) · 4× CDC-ACM (host side)      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,7 +57,7 @@ be tested in isolation.
 |------------------|---------------------|----------|---------------------|
 | Userspace tools  | Distro packages     | any      | Kernel subsystems   |
 | Userspace Rust   | `userspace/`        | Rust     | USB via `nusb`      |
-| Kernel driver    | `driver/`           | Rust     | USB core + subsystems|
+| Kernel driver    | `driver/`           | C        | USB core + subsystems|
 | RPBP wire format | `userspace/rpbridge-protocol/`, `firmware/src/rpbp/`, `driver/src/rpbp.rs` | Rust + C | bytes over bulk EP |
 | Firmware         | `firmware/`         | C        | RP2354B hardware    |
 | Hardware         | `hardware/`         | KiCad    | physics             |
@@ -67,15 +67,19 @@ be tested in isolation.
 A single vendor interface would have been enough *theoretically*, but
 reusing mainline kernel drivers where they exist saves us real work:
 
-1. **CDC-ACM × 3** — UART 1, UART 2, and the debug log. Handled by
-   `usbser` on every OS; every terminal and `tio`-class tool works
-   untouched.
+1. **CDC-ACM × 4** — three views of UART1 through different transceiver
+   banks (RS232 / RS485 / TTL) plus UART2 via PIO. The firmware
+   switches the UART1 bank based on which CDC currently holds
+   `DTR=1`. Handled by `cdc_acm` (Linux) / `usbser.sys` (Windows);
+   every terminal and `tio`-class tool works untouched. The debug
+   log is NOT on a CDC — `stdio` (printf) goes to UART1 hardware
+   on the 5-pin debug header (GP4/GP5).
 2. **gs_usb vendor** — a single CAN interface speaking the gs_usb /
    candleLight protocol. Handled by `drivers/net/can/usb/gs_usb.ko`
    on Linux; handled by `candle_api`, `python-can` and SavvyCAN on
    Windows.
 3. **RPBP vendor** — everything else: I²C, SPI, GPIO, PWM, ADC,
-   1-Wire, UART phy selection, control plane, OTA. Our own Rust
+   1-Wire, UART phy selection, control plane, OTA. Our own C
    driver owns this interface.
 
 ## Data-path examples
