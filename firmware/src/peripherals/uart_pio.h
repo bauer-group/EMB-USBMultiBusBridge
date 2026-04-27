@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 BAUER GROUP
  *
  * uart_pio — 8N1-only UART implemented on two PIO state machines.

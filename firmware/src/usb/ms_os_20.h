@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 BAUER GROUP
  *
  * Microsoft OS 2.0 descriptor set + BOS descriptor.

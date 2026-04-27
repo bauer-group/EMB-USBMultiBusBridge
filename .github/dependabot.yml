@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Dependabot — keep Cargo crates, GitHub Actions and Python docs deps
 # up to date without human prompting. GitHub Actions must be pinned to

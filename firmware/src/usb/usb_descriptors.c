@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 BAUER GROUP
  *
  * USB composite device descriptors for RPBridge.

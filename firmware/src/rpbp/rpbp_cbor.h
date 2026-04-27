@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 BAUER GROUP
  *
  * rpbp_cbor — minimal CBOR writer (RFC 8949) used by the firmware to

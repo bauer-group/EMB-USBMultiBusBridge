@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: MIT
 #
 # Soft cap on flash + static-RAM footprint. Catches creep before it
 # reaches the linker's hard cap (= physical flash) so the regression

@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 BAUER GROUP
  *
  * i2s — I²S TX (Philips I²S, 16-bit signed PCM, stereo) on PIO2.

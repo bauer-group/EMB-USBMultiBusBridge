@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Run KUnit tests for the RPBridge kernel driver against a local
 # kernel source tree. The tree must have CONFIG_RUST=y and must have

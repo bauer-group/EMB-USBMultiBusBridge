@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Install the host-side toolchains the RPBridge project expects.
 # Idempotent — re-running upgrades versions where necessary.

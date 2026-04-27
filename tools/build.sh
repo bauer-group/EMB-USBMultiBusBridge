@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Single entrypoint for building any (or every) component of RPBridge,
 # used identically by humans on a workstation and by GitHub Actions.

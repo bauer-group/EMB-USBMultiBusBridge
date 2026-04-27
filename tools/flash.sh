@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Flash a UF2 onto a connected RPBridge. If the device is not already
 # in BOOTSEL mode, try to trigger it via rpbridge-ctl; otherwise fall

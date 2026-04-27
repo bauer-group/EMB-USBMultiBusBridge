@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: MIT
 #
 # Build every supported RPBridge firmware variant in one go.
 # Output artefacts land under ./build/<variant>/rpbridge-<variant>.uf2.

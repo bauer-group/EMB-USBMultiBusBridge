@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2026 BAUER GROUP
 #
 # Host-side unit tests for the pure RPBP modules — no pico-sdk

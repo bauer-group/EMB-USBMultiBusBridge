@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Single-image build environment for the entire RPBridge tree:
 #   - firmware  (Cortex-M33 / Pico-SDK 2.2.0 / ARM GNU Toolchain)
