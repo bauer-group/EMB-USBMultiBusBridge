@@ -32,12 +32,12 @@ each developer machine, with floating apt versions. The trade-off:
   same package versions from the same archive at the same time.
   This was the original problem (`lokal nicht sauber, remote
   komplett anders`) and it is fully solved.
-* **Cross-time byte-equality** is not preserved — rebuilding v1.0.0
-  six months from now may yield a binary that differs from the
-  original release. For embedded products with regulatory
-  reproducibility requirements (medical, automotive ASIL), this
-  trade-off is wrong; switch to digest-pinned images and a registry
-  before going to production in those domains.
+* **Cross-time byte-equality** is not preserved — rebuilding any
+  given release tag six months later may yield a binary that
+  differs from the original release. For embedded products with
+  regulatory reproducibility requirements (medical, automotive
+  ASIL), this trade-off is wrong; switch to digest-pinned images
+  and a registry before going to production in those domains.
 
 ## Layer-cache behaviour
 

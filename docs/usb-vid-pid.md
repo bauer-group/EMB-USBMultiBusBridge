@@ -7,7 +7,7 @@
 | **VID** | `0x0545` | **Production** — assigned to BAUER GROUP |
 | **PID** | `0x0101` | **Production** — RPBridge |
 | **bcdDevice** | `0x0100` | Bumped per protocol-major release (RPBP v1 → `0x0100`) |
-| **Allocation date** | 2026-04-27 | First-shipping firmware: v1.0.0 (post-allocation) |
+| **Allocation date** | 2026-04-27 | First firmware shipping with this VID/PID: v0.1.0 onwards |
 
 The pair is wired into the firmware descriptors, the kernel
 driver's USB id_table, the userspace client's defaults, and the
