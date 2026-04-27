@@ -14,11 +14,16 @@
  *
  *   MS OS 2.0 descriptor set (330 B)
  *     ├── Set header                                      10 B
- *     ├── Function subset for IF 6 (RPBP control)       160 B
+ *     ├── Function subset for IF N   (RPBP control)     160 B
  *     │     ├── subset header                              8 B
  *     │     ├── COMPATIBLE_ID "WINUSB"                    20 B
  *     │     └── REG_PROPERTY DeviceInterfaceGUIDs        132 B
- *     └── Function subset for IF 7 (gs_usb CAN)         160 B   (same shape)
+ *     └── Function subset for IF N+1 (gs_usb CAN)       160 B   (same shape)
+ *
+ * The vendor interface numbers depend on RPBRIDGE_DEBUG_CDC: with the
+ * default 4-CDC build they are {8,9}; with the optional 5th debug-log
+ * CDC included they shift to {10,11}. The two macros below pick up
+ * the correct values from the same flag that gates usb_descriptors.c.
  *
  * DeviceInterfaceGUIDs:
  *   - RPBP control:  {24D7D4F5-FB9F-4B5D-8A1F-69F3C9FE8B23}
@@ -70,8 +75,13 @@
 
 /* ───── Vendor-interface numbers — must match usb_descriptors.c ─────── */
 
+#ifdef RPBRIDGE_DEBUG_CDC
+#define IF_NUM_RPBP_CTRL             10u
+#define IF_NUM_GS_USB_CAN            11u
+#else
 #define IF_NUM_RPBP_CTRL             8u
 #define IF_NUM_GS_USB_CAN            9u
+#endif
 
 /* ───── MS OS 2.0 descriptor set blob ────────────────────────────────── */
 
@@ -82,7 +92,7 @@ const uint8_t desc_ms_os_20[MS_OS_20_DESC_LEN] = {
     U32LE(MS_OS_20_WINDOWS_VERSION),
     U16LE(MS_OS_20_DESC_LEN),
 
-    /* ──────── Function subset — interface 6 (RPBP control) ──────── */
+    /* ──── Function subset — RPBP control (IF_NUM_RPBP_CTRL) ──── */
     U16LE(FUNCTION_SUBSET_HEADER_LEN),
     U16LE(MS_OS_20_SUBSET_HEADER_FN),
     IF_NUM_RPBP_CTRL,
@@ -119,7 +129,7 @@ const uint8_t desc_ms_os_20[MS_OS_20_DESC_LEN] = {
     U16CH('3'),U16CH('}'),
     U16NUL, U16NUL,
 
-    /* ──────── Function subset — interface 7 (gs_usb CAN) ────────── */
+    /* ──── Function subset — gs_usb CAN (IF_NUM_GS_USB_CAN) ───── */
     U16LE(FUNCTION_SUBSET_HEADER_LEN),
     U16LE(MS_OS_20_SUBSET_HEADER_FN),
     IF_NUM_GS_USB_CAN,

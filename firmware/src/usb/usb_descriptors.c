@@ -9,20 +9,29 @@
  *   2,3   CDC-ACM #1           "RPBridge UART1 (RS485)"  — via SN65HVD72
  *   4,5   CDC-ACM #2           "RPBridge UART1 (TTL)"    — direct drive
  *   6,7   CDC-ACM #3           "RPBridge UART2 (TTL)"    — PIO-UART #2
+ * # if RPBRIDGE_DEBUG_CDC
+ *   8,9   CDC-ACM #4           "RPBridge Debug Log"      — printf() sink
+ *   10    Vendor (WinUSB)      "RPBridge RPBP transport" — bulk control
+ *   11    Vendor (gs_usb)      "RPBridge CAN (gs_usb)"   — SocketCAN-compat
+ * # else
  *   8     Vendor (WinUSB)      "RPBridge RPBP transport" — bulk control
  *   9     Vendor (gs_usb)      "RPBridge CAN (gs_usb)"   — SocketCAN-compat
+ * # endif
  *
- * The four CDCs are all data channels for user-facing UART traffic.
+ * The four user-facing CDCs are all data channels for UART traffic.
  * Three of them are alternate views of the same UART1 hardware peripheral
  * routed through different transceivers (MAX3232 / SN65HVD72 / direct
  * TTL); the firmware switches the active transceiver bank based on
  * which CDC currently asserts DTR=1. The fourth CDC drives UART2 via a
  * PIO state-machine on dedicated pins.
  *
- * The firmware does NOT expose a USB debug-log CDC. The TinyUSB stdio
- * backend is intentionally disabled (see firmware/CMakeLists.txt:
- * pico_enable_stdio_usb(... 0)) — printf() is routed to the UART1
- * hardware peripheral on the 5-pin debug header (GP4/GP5) instead.
+ * The optional 5th CDC ("Debug Log") is gated by the CMake option
+ * RPBRIDGE_DEBUG_CDC (default OFF). When enabled, it carries pico-sdk
+ * stdio output as a USB-side log channel and shifts the vendor
+ * interfaces from {8,9} to {10,11}; ms_os_20.c mirrors the same gate.
+ * UART1-hardware stdio on the 5-pin debug header (GP4/GP5) stays
+ * enabled either way — see firmware/src/usb/debug_cdc.c and the
+ * pico_enable_stdio_* lines in firmware/CMakeLists.txt.
  *
  * VID/PID — see the §VID / PID block below. The pair 0x0545:0x0101 is
  * the production allocation made to BAUER GROUP on 2026-04-27. Keep
@@ -93,6 +102,10 @@ enum {
     ITF_CDC_2_DATA,
     ITF_CDC_3,             /* UART 2 TTL   (PIO-UART #2)                 */
     ITF_CDC_3_DATA,
+#ifdef RPBRIDGE_DEBUG_CDC
+    ITF_CDC_4,             /* Debug Log    (printf() sink, optional)     */
+    ITF_CDC_4_DATA,
+#endif
     ITF_VENDOR_CTRL,       /* RPBP control pipe                          */
     ITF_VENDOR_CAN,        /* gs_usb CAN pipe                            */
     ITF_TOTAL
@@ -114,14 +127,33 @@ enum {
 #define EPNUM_CDC_3_OUT     0x08
 #define EPNUM_CDC_3_IN      0x88
 
+/* Vendor EPs are kept at the same hardware EP numbers regardless of
+ * the debug-CDC flag — only the interface NUMBERS shift. The optional
+ * CDC #4 is allocated EP11/EP12 so it sits past the vendor EPs and
+ * adding/removing the flag never touches the RPBP/gs_usb endpoints. */
 #define EPNUM_VCTRL_OUT     0x09
 #define EPNUM_VCTRL_IN      0x89
 
 #define EPNUM_VCAN_OUT      0x0A
 #define EPNUM_VCAN_IN       0x8A
 
+#ifdef RPBRIDGE_DEBUG_CDC
+#define EPNUM_CDC_4_NOTIF   0x8B
+#define EPNUM_CDC_4_OUT     0x0C
+#define EPNUM_CDC_4_IN      0x8C
+
+#define RPB_CDC_COUNT       5u
+#define ISTR_CDC_4          8u
+#define ISTR_VENDOR_CTRL    9u
+#define ISTR_VENDOR_CAN     10u
+#else
+#define RPB_CDC_COUNT       4u
+#define ISTR_VENDOR_CTRL    8u
+#define ISTR_VENDOR_CAN     9u
+#endif
+
 #define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN +                \
-                             TUD_CDC_DESC_LEN * 4 +               \
+                             TUD_CDC_DESC_LEN * RPB_CDC_COUNT +   \
                              TUD_VENDOR_DESC_LEN * 2)
 
 uint8_t const desc_fs_configuration[] = {
@@ -143,12 +175,18 @@ uint8_t const desc_fs_configuration[] = {
     TUD_CDC_DESCRIPTOR(ITF_CDC_3, 7 /* iInterface */, EPNUM_CDC_3_NOTIF, 8,
                        EPNUM_CDC_3_OUT, EPNUM_CDC_3_IN, 64),
 
+#ifdef RPBRIDGE_DEBUG_CDC
+    /* CDC #4 — Debug Log (printf sink, build-gated) */
+    TUD_CDC_DESCRIPTOR(ITF_CDC_4, ISTR_CDC_4, EPNUM_CDC_4_NOTIF, 8,
+                       EPNUM_CDC_4_OUT, EPNUM_CDC_4_IN, 64),
+#endif
+
     /* Vendor #0 — RPBP control */
-    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CTRL, 8 /* iInterface */,
+    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CTRL, ISTR_VENDOR_CTRL,
                           EPNUM_VCTRL_OUT, EPNUM_VCTRL_IN, 64),
 
     /* Vendor #1 — gs_usb CAN */
-    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CAN, 9 /* iInterface */,
+    TUD_VENDOR_DESCRIPTOR(ITF_VENDOR_CAN, ISTR_VENDOR_CAN,
                           EPNUM_VCAN_OUT, EPNUM_VCAN_IN, 64),
 };
 
@@ -207,8 +245,14 @@ static char const *const string_desc_arr[] = {
     "RPBridge UART1 (RS485)",       /* 5: CDC #1 — UART0 HW via SN65HVD72 */
     "RPBridge UART1 (TTL)",         /* 6: CDC #2 — UART0 HW direct drive  */
     "RPBridge UART2 (TTL)",         /* 7: CDC #3 — PIO-UART #2            */
+#ifdef RPBRIDGE_DEBUG_CDC
+    "RPBridge Debug Log",           /* 8: CDC #4 — printf sink (optional) */
+    "RPBridge RPBP transport",      /* 9: vendor RPBP                     */
+    "RPBridge CAN (gs_usb)",        /* 10: vendor gs_usb                  */
+#else
     "RPBridge RPBP transport",      /* 8: vendor RPBP                     */
     "RPBridge CAN (gs_usb)",        /* 9: vendor gs_usb                   */
+#endif
 };
 
 static uint16_t _desc_str[32];

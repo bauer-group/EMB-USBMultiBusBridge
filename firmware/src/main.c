@@ -5,7 +5,9 @@
  * RPBridge firmware — entry point.
  *
  * Responsibilities covered in this build:
- *   - TinyUSB device init (composite: 4x CDC-ACM + 2x vendor)
+ *   - TinyUSB device init (composite: 4x CDC-ACM + 2x vendor;
+ *                          optional 5th CDC for stdio when
+ *                          -DRPBRIDGE_DEBUG_CDC=ON)
  *   - RPBP v1 transport on the first vendor interface
  *      ├─ HELLO handshake · PING/PONG · TIME_SYNC · RESET_CHANNEL
  *      └─ CMD_REQUEST: SYS (9 ops) + I²C + SPI + GPIO + PWM + ADC + UART
@@ -31,6 +33,7 @@
 #include "rpbp/rpbp_stream.h"
 #include "commands/cmd_sys.h"
 #include "usb/cdc_glue.h"
+#include "usb/debug_cdc.h"
 #include "peripherals/pin_broker.h"
 #include "peripherals/i2c_hw.h"
 #include "peripherals/spi.h"
@@ -285,6 +288,9 @@ int main(void)
     }
 
     tusb_init();
+    /* If the build has RPBRIDGE_DEBUG_CDC=1, register the optional
+     * USB-side stdio backend on CDC #4. No-op when the flag is OFF. */
+    debug_cdc_init();
     rpbp_transport_init();
     rpbp_stream_init();
     cdc_glue_init();

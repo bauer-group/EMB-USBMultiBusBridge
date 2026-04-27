@@ -56,6 +56,26 @@ if(NOT PICO_PLATFORM)
 endif()
 message(STATUS "RPBridge: building for board '${PICO_BOARD}' on platform '${PICO_PLATFORM}'")
 
+# ──────────────────────────────────────────────────────────────────────────
+# Build options
+# ──────────────────────────────────────────────────────────────────────────
+#
+# RPBRIDGE_DEBUG_CDC: expose a 5th CDC-ACM interface ("RPBridge Debug
+# Log") and wire pico-sdk's printf() to it as an additional concurrent
+# stdio backend (UART1 hardware stdio on GP4/GP5 stays enabled either
+# way). When ON, the WinUSB vendor interfaces shift bInterfaceNumber
+# from {8,9} to {10,11}; the kernel driver self-discovers via class
+# match and is unaffected, but the MS OS 2.0 descriptor — and any
+# Windows tooling that hard-codes interface numbers — does see the
+# shift.
+#
+# Default OFF: the production composite ships with 4 CDCs + 2 vendor.
+# Turn ON for development builds where USB-side log capture is more
+# convenient than the SWD/UART1 path.
+option(RPBRIDGE_DEBUG_CDC
+    "Add a 5th CDC-ACM exposing stdio over USB" OFF)
+message(STATUS "RPBridge: RPBRIDGE_DEBUG_CDC=${RPBRIDGE_DEBUG_CDC}")
+
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/pico_sdk_import.cmake)
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -154,6 +174,10 @@ set(RPBRIDGE_OWN_SOURCES
     src/usb/ms_os_20.c
     src/usb/cdc_glue.c
     src/usb/gs_usb_glue.c
+    # Optional 5th CDC for stdio (gated by RPBRIDGE_DEBUG_CDC). The
+    # source compiles to nothing when the option is OFF; we always
+    # list it so coverage / static-analysis tooling sees the file.
+    src/usb/debug_cdc.c
 
     # Core-1 I/O scheduler + cross-core IPC.
     src/io_control/io_control.c
@@ -261,16 +285,25 @@ target_link_libraries(rpbridge PRIVATE
 )
 
 # stdio routes to UART1 on the 5-pin debug header (GP4/GP5). Enabling
-# pico's stdio_usb would try to add its own CDC-ACM class instance —
-# that conflicts with our hand-built composite descriptor (4 CDCs +
-# 2 vendors) and pushes the firmware past TinyUSB's class-instance
-# limit. The four CDCs are all data channels for user-facing UART
-# traffic (UART1 × three transceiver banks RS232/RS485/TTL plus
-# UART2 via PIO); the debug log stays on the dedicated UART1
-# hardware peripheral on the 5-pin header so it never competes
-# with user data for USB bandwidth.
+# pico's stdio_usb would try to add its own CDC-ACM class instance
+# that conflicts with our hand-built composite descriptor (4 or 5
+# CDCs + 2 vendors). The user-facing CDCs (#0..#3) are data channels
+# for UART traffic (UART1 × three transceiver banks RS232/RS485/TTL
+# plus UART2 via PIO); UART1 hardware peripheral on the 5-pin header
+# always carries the debug log so SWD-side debugging works regardless
+# of USB enumeration state.
+#
+# When RPBRIDGE_DEBUG_CDC=ON, src/usb/debug_cdc.c registers an
+# additional pico-sdk stdio_driver_t that pushes printf() to a 5th
+# CDC-ACM ("RPBridge Debug Log") via tud_cdc_n_write(4, ...) — this
+# is independent of the SDK's stdio_usb backend (which stays disabled)
+# and runs concurrently with stdio_uart. See firmware/src/usb/debug_cdc.c.
 pico_enable_stdio_usb(rpbridge 0)
 pico_enable_stdio_uart(rpbridge 1)
+
+if(RPBRIDGE_DEBUG_CDC)
+    target_compile_definitions(rpbridge PRIVATE RPBRIDGE_DEBUG_CDC=1)
+endif()
 
 # Name the output after the board variant so a multi-board build
 # directory leaves unambiguous artefacts: rpbridge-rev-b.uf2,

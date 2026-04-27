@@ -18,11 +18,13 @@
  *   - 1× Vendor interface speaking gs_usb for CAN (mainline Linux driver
  *        binds automatically, Windows tools via candle_api).
  *
- * The firmware does NOT expose a USB debug-log CDC. stdio (printf)
- * is wired to UART1 hardware peripheral (GP4/GP5) on the 5-pin
- * debug header, accessed via picoprobe / USB-serial dongle / SWD-
- * UART tooling. See firmware/CMakeLists.txt's pico_enable_stdio_*
- * lines for the rationale.
+ * Optional 5th CDC (RPBRIDGE_DEBUG_CDC=1, default 0):
+ *   - #4 = "RPBridge Debug Log" — printf() goes here as an additional
+ *     concurrent stdio backend. UART1-hardware stdio on the 5-pin
+ *     debug header (GP4/GP5) stays enabled either way, so SWD-side
+ *     debugging never depends on USB enumeration state. See
+ *     firmware/src/usb/debug_cdc.c for the stdio_driver_t glue and
+ *     firmware/CMakeLists.txt for the build option.
  */
 
 #ifndef TUSB_CONFIG_H
@@ -64,10 +66,15 @@ extern "C" {
  * transceiver for whichever UART0 CDC is currently active. Only one
  * UART0 CDC may own UART0 HW at a time; others silently drain.
  *
- * We deliberately do NOT expose a USB debug-log CDC — stdio is routed
- * to UART1 on the 5-pin debug header instead (see CMakeLists.txt).
+ * Optional CDC #4 (RPBRIDGE_DEBUG_CDC=1) carries stdio output as a
+ * USB-side debug log. UART1 hardware stdio remains enabled in either
+ * configuration — see firmware/CMakeLists.txt for the build option.
  */
+#ifdef RPBRIDGE_DEBUG_CDC
+#define CFG_TUD_CDC               5
+#else
 #define CFG_TUD_CDC               4
+#endif
 #define CFG_TUD_VENDOR            2   /* RPBP transport + gs_usb */
 #define CFG_TUD_HID               0
 #define CFG_TUD_MSC               0

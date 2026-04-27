@@ -102,12 +102,30 @@ to see `printf()` output.
 
 `stdio_usb` is intentionally disabled — enabling it would spawn a
 private CDC-ACM interface that collides with our hand-built composite
-(4× CDC + 2× vendor) and pushes the firmware past TinyUSB's class-
-instance limit. The four CDCs are all data channels for user-facing
-UART traffic (UART1 × three transceiver banks: RS232 / RS485 / TTL,
-plus UART2 via PIO); the debug log stays on the dedicated UART1
-hardware peripheral on the 5-pin header so it never competes with
-user data for USB bandwidth.
+(4× CDC + 2× vendor). The four user-facing CDCs are all data channels
+for UART traffic (UART1 × three transceiver banks: RS232 / RS485 /
+TTL, plus UART2 via PIO).
+
+For development builds where USB-side log capture is more convenient
+than the SWD/UART path, configure with:
+
+```sh
+cmake -S firmware -B firmware/build \
+      -G Ninja \
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DRPBRIDGE_DEBUG_CDC=ON
+```
+
+This adds a 5th CDC-ACM (`"RPBridge Debug Log"`) and registers a
+[`stdio_driver_t`](src/usb/debug_cdc.c) that pipes `printf()` to it
+non-blocking — bytes are dropped if the host has not opened the port
+or if the TX FIFO is full. UART1-hardware stdio remains enabled
+either way, so SWD-side debugging works regardless of USB state.
+
+The flag also shifts the WinUSB vendor interface numbers from {8,9}
+to {10,11}; the kernel driver self-discovers via class match and is
+unaffected, but the MS OS 2.0 descriptor mirrors the gate so Windows
+auto-binding keeps working.
 
 ### SWD
 
@@ -150,16 +168,22 @@ VID 0x0545 / PID 0x0101 (BAUER GROUP — RPBridge, allocated 2026-04-27)
 
 Interface  Class              Purpose                        Host driver
 ─────────  ─────────────────  ─────────────────────────────  ─────────────────────────
-0,1        CDC-ACM × 1        UART 1 RS232  (via MAX3232)    usbser / inbox VCP
-2,3        CDC-ACM × 1        UART 1 RS485  (via SN65HVD72)  usbser / inbox VCP
-4,5        CDC-ACM × 1        UART 1 TTL    (direct drive)   usbser / inbox VCP
-6,7        CDC-ACM × 1        UART 2 TTL    (PIO-UART #2)    usbser / inbox VCP
-8          Vendor (WinUSB)    RPBP control (bulk)            rpbridge.ko / WinUSB
-9          Vendor (WinUSB)    gs_usb CAN   (bulk)            gs_usb.ko / candle_api
+0,1        CDC-ACM            UART 1 RS232  (via MAX3232)    cdc_acm / inbox VCP
+2,3        CDC-ACM            UART 1 RS485  (via SN65HVD72)  cdc_acm / inbox VCP
+4,5        CDC-ACM            UART 1 TTL    (direct drive)   cdc_acm / inbox VCP
+6,7        CDC-ACM            UART 2 TTL    (PIO-UART #2)    cdc_acm / inbox VCP
+8,9*       CDC-ACM            Debug Log     (printf sink)    cdc_acm / inbox VCP
+8 / 10*    Vendor (WinUSB)    RPBP control  (bulk)           rpbridge.ko / WinUSB
+9 / 11*    Vendor (WinUSB)    gs_usb CAN    (bulk)           gs_usb.ko / candle_api
+
+* — only present / shifted when -DRPBRIDGE_DEBUG_CDC=ON. With the
+default build (debug CDC OFF), interfaces 8/9 are the vendor pair.
 ```
 
-The debug log is NOT on a CDC; `stdio` (printf) goes to UART1 on the
-5-pin debug header instead — see the "Debugging" section above.
+By default the debug log is NOT on a CDC; `stdio` (printf) goes to
+UART1 on the 5-pin debug header. The optional 5th CDC adds a
+USB-side `printf` mirror — see the "Debugging" section above for
+the build flag.
 
 **Driverless phy selection:** a developer picks the UART0 physical
 layer by opening the correspondingly-labelled virtual COM port — the
@@ -175,10 +199,10 @@ Windows 10 ≥ 1709 binds WinUSB automatically via the BOS + MS OS 2.0
 descriptor set (see [`src/usb/ms_os_20.c`](src/usb/ms_os_20.c)).
 The two vendor interfaces register distinct `DeviceInterfaceGUIDs`:
 
-| Interface          | DeviceInterfaceGUID                        |
-|--------------------|---------------------------------------------|
-| 8 — RPBP Control   | `{24D7D4F5-FB9F-4B5D-8A1F-69F3C9FE8B23}`    |
-| 9 — gs_usb CAN     | `{8F3B2E41-5A6C-4D7E-9F1A-2B3C4D5E6F70}`    |
+| Interface (default / `RPBRIDGE_DEBUG_CDC=ON`) | DeviceInterfaceGUID                      |
+|-----------------------------------------------|------------------------------------------|
+| 8  / 10 — RPBP Control                        | `{24D7D4F5-FB9F-4B5D-8A1F-69F3C9FE8B23}` |
+| 9  / 11 — gs_usb CAN                          | `{8F3B2E41-5A6C-4D7E-9F1A-2B3C4D5E6F70}` |
 
 ## Source tree
 
@@ -207,7 +231,9 @@ firmware/
 │       ├── tusb_config.h
 │       ├── usb_descriptors.c        # composite + BOS + control xfer
 │       ├── ms_os_20.{c,h}           # MS OS 2.0 descriptor set
-│       └── (cdc_glue, vendor_class, gs_usb_glue — future modules)
+│       ├── cdc_glue.{c,h}           # CDC-ACM <-> UART byte shuttle
+│       ├── gs_usb_glue.{c,h}        # gs_usb (SocketCAN) class glue
+│       └── debug_cdc.{c,h}          # optional 5th CDC stdio backend
 ├── third_party/
 │   ├── pico-sdk/                    # submodule @ tag 2.2.0
 │   └── can2040/                     # submodule
