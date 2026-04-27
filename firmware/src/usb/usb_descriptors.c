@@ -28,25 +28,16 @@
 
 /* ───── VID / PID ──────────────────────────────────────────────────── *
  *
- * STATUS: PRE-PRODUCTION. The PID below is from the pid.codes
- * "testing" range (0xFFF0..0xFFFF), shared by every developer who
- * has not yet completed the pid.codes registration. Two RPBridge
- * boards on the same Linux host while using this PID would collide
- * with anyone else's testing-range device — fine for development,
- * UNACCEPTABLE for production hardware.
- *
- * Action required before first hardware shipment:
- *   1. File a pid.codes registration entry pointing at this repo.
- *      (Wiki: https://pid.codes/howto/ — kostenlos für Open-Hardware.)
- *   2. Replace RPBRIDGE_USB_PID with the allocated value.
- *   3. Update driver/src/core_driver.rs to match.
- *   4. Update docs/usb-vid-pid.md with the allocation timestamp.
- *
- * Tracked in firmware/TODO.md → "Pre-production gates".
+ * Production VID/PID assigned to BAUER GROUP for the RPBridge.
+ * Allocated 2026-04-27. The same pair is wired into the kernel
+ * driver's match table (driver/src/rpbp.h: RPBRIDGE_USB_*) and
+ * the userspace client's defaults (userspace/rpbridge/src/lib.rs:
+ * DEFAULT_VID / DEFAULT_PID). Keep all three sites in lock-step
+ * — a mismatch silently breaks the auto-bind path.
  */
 
-#define RPBRIDGE_USB_VID    0x1209   /* pid.codes — Open Hardware VID */
-#define RPBRIDGE_USB_PID    0xFFFE   /* TESTING-RANGE — see PRE-PRODUCTION block above */
+#define RPBRIDGE_USB_VID    0x0545   /* BAUER GROUP — production VID */
+#define RPBRIDGE_USB_PID    0x0101   /* RPBridge — production PID    */
 
 #define RPBRIDGE_USB_BCD    0x0210   /* USB 2.1 to enable BOS / MS OS 2.0 */
 
@@ -156,7 +147,24 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 
 /* ───── String descriptors ───────────────────────────────────────────── */
 
-static char rpbridge_serial[PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2 + 1] = { 0 };
+/*
+ * Serial number format: "RPB-" prefix + 16 hex chars derived from
+ * the W25Q flash chip's unique 64-bit ID via pico_get_unique_board_id().
+ * Total length 20 chars + NUL. The prefix makes the serial visually
+ * identifiable as our device in lsusb output and is short enough to
+ * fit comfortably in udev SYMLINK paths.
+ *
+ * Deterministic: same hardware → same serial across reboots and
+ * reflashes. Globally unique: W25Q-class flash chip ID is guaranteed
+ * unique by the manufacturer. No production-time provisioning step
+ * is required.
+ */
+#define RPBRIDGE_SERIAL_PREFIX     "RPB-"
+#define RPBRIDGE_SERIAL_PREFIX_LEN (sizeof(RPBRIDGE_SERIAL_PREFIX) - 1)
+#define RPBRIDGE_SERIAL_LEN \
+    (RPBRIDGE_SERIAL_PREFIX_LEN + PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2)
+
+static char rpbridge_serial[RPBRIDGE_SERIAL_LEN + 1] = { 0 };
 
 static void serial_from_unique_id(void)
 {
@@ -167,6 +175,9 @@ static void serial_from_unique_id(void)
     pico_get_unique_board_id(&id);
     static const char hex[] = "0123456789ABCDEF";
     size_t w = 0;
+    memcpy(&rpbridge_serial[w], RPBRIDGE_SERIAL_PREFIX,
+           RPBRIDGE_SERIAL_PREFIX_LEN);
+    w += RPBRIDGE_SERIAL_PREFIX_LEN;
     for (size_t i = 0; i < PICO_UNIQUE_BOARD_ID_SIZE_BYTES; ++i) {
         rpbridge_serial[w++] = hex[(id.id[i] >> 4) & 0xFu];
         rpbridge_serial[w++] = hex[(id.id[i]) & 0xFu];
@@ -175,16 +186,16 @@ static void serial_from_unique_id(void)
 }
 
 static char const *const string_desc_arr[] = {
-    (const char[]){0x09, 0x04},           /* 0: supported language = en-US (0x0409) */
-    "BAUER GROUP",                        /* 1: Manufacturer */
-    "RPBridge Multi-Bus Developer Bridge",/* 2: Product */
-    rpbridge_serial,                      /* 3: Serial number (filled lazily) */
-    "rpbridge UART 1 (RS232)",            /* 4: CDC #0 — UART0 HW via MAX3232   */
-    "rpbridge UART 1 (RS485)",            /* 5: CDC #1 — UART0 HW via SN65HVD72 */
-    "rpbridge UART 1 (TTL)",              /* 6: CDC #2 — UART0 HW direct drive  */
-    "rpbridge UART 2 (TTL)",              /* 7: CDC #3 — PIO-UART #2            */
-    "rpbridge Control",                   /* 8: vendor RPBP                     */
-    "rpbridge CAN",                       /* 9: vendor gs_usb                   */
+    (const char[]){0x09, 0x04},     /* 0: language = en-US (0x0409)       */
+    "BAUER GROUP",                  /* 1: iManufacturer                   */
+    "RPBridge",                     /* 2: iProduct                        */
+    rpbridge_serial,                /* 3: iSerialNumber (filled lazily)   */
+    "RPBridge UART1 (RS232)",       /* 4: CDC #0 — UART0 HW via MAX3232   */
+    "RPBridge UART1 (RS485)",       /* 5: CDC #1 — UART0 HW via SN65HVD72 */
+    "RPBridge UART1 (TTL)",         /* 6: CDC #2 — UART0 HW direct drive  */
+    "RPBridge UART2 (TTL)",         /* 7: CDC #3 — PIO-UART #2            */
+    "RPBridge RPBP transport",      /* 8: vendor RPBP                     */
+    "RPBridge CAN (gs_usb)",        /* 9: vendor gs_usb                   */
 };
 
 static uint16_t _desc_str[32];
