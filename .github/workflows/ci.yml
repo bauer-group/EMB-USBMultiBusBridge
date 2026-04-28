@@ -11,6 +11,9 @@ on:
       - 'tools/**'
       - 'docs/driver-compatibility.yml'
       - '.github/workflows/ci.yml'
+      # Pure documentation changes don't affect the build — let
+      # the deploy-pages workflow handle markdown updates instead.
+      - '!**/*.md'
   pull_request:
     paths:
       - 'firmware/**'
@@ -19,6 +22,7 @@ on:
       - 'tools/**'
       - 'docs/driver-compatibility.yml'
       - '.github/workflows/ci.yml'
+      - '!**/*.md'
   workflow_dispatch:
 
 concurrency:
