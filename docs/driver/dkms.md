@@ -15,22 +15,31 @@ Source layout for packaging:
 - [`driver/packaging/rpm/rpbridge.spec`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/driver/packaging/rpm/rpbridge.spec)
   — RPM spec, targets Fedora ≥ 41 and Rocky/RHEL ≥ 9.
 
-CI pipelines build both formats on tag push
-(`.github/workflows/driver-package.yml`).
+CI pipelines build both formats on tag push via
+[`.github/workflows/release.yml`](https://github.com/bauer-group/EMB-USBMultiBusBridge/blob/main/.github/workflows/release.yml)
+and attach them to the GitHub Release.
 
 ## Local DKMS install
 
 ```sh
-sudo dkms add    driver
-sudo dkms build  rpbridge/0.1.0
-sudo dkms install rpbridge/0.1.0
+# from the repo root, with the source tree checked out:
+sudo dkms add     driver/                          # registers /usr/src/rpbridge-0.1.0/
+sudo dkms build   rpbridge/0.1.0                   # compiles against running kernel
+sudo dkms install rpbridge/0.1.0                   # → /lib/modules/.../updates/dkms/
+
+# udev rule + module load (DKMS doesn't ship the udev rule on its own):
+sudo cp driver/udev/70-rpbridge.rules /etc/udev/rules.d/
+sudo udevadm control --reload
 sudo modprobe rpbridge
 
-dkms status
+dkms status                                        # verify "installed"
 ```
 
 `sudo dkms autoinstall` re-runs the build after a kernel upgrade and
-reinstalls the module automatically.
+reinstalls the module automatically. The CI-built `.deb` / `.rpm`
+packages do all of this in their post-install hook (including the
+udev rule drop) — only the manual-source path needs the explicit
+`cp` step above.
 
 ## Verifying a package
 

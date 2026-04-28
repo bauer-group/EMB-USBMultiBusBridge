@@ -43,22 +43,37 @@ tools/build.sh driver           # builds rpbridge.ko in dist/driver/
 make                                  # builds against /lib/modules/$(uname -r)/build
 sudo make modules_install             # installs into /lib/modules/$(uname -r)/extra
 sudo depmod -a
+sudo cp udev/70-rpbridge.rules \
+        /etc/udev/rules.d/            # device-node permissions + symlinks
+sudo udevadm control --reload
 sudo modprobe rpbridge
 ```
 
 ### Via DKMS
 
 ```sh
-sudo dkms add    driver
-sudo dkms build  rpbridge/0.1.0
+sudo dkms add     driver/             # registers /usr/src/rpbridge-0.1.0/
+sudo dkms build   rpbridge/0.1.0
 sudo dkms install rpbridge/0.1.0
+sudo cp driver/udev/70-rpbridge.rules \
+        /etc/udev/rules.d/            # DKMS itself does NOT ship the udev rule
+sudo udevadm control --reload
 sudo modprobe rpbridge
 ```
 
 ### Via distribution package
 
-See the `.deb` / `.rpm` built by the CI workflow in
-[`.github/workflows/`](../.github/workflows/).
+The `.deb` / `.rpm` produced by the release CI workflow drops the
+udev rule into `/etc/udev/rules.d/` automatically and runs
+`dkms autoinstall` in its post-install hook:
+
+```sh
+sudo apt install ./rpbridge-dkms_0.1.0_all.deb     # Debian / Ubuntu
+sudo dnf install rpbridge-dkms-0.1.0-1.noarch.rpm  # Fedora / Rocky
+```
+
+For full step-by-step instructions including troubleshooting see
+[`docs/driver/build.md`](../docs/driver/build.md).
 
 ## Tree layout
 
