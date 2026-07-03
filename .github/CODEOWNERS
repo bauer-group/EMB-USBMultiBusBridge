@@ -4,11 +4,11 @@
 # maintainer. Add sub-team handles here once the project grows beyond
 # a single-owner setup.
 
-*                       @bauer-group/rpbridge-maintainers
+*                       @bauer-group/core
 
-/firmware/              @bauer-group/firmware
-/driver/                @bauer-group/linux-driver
-/userspace/             @bauer-group/userspace
-/docs/                  @bauer-group/docs
-/hardware/              @bauer-group/hardware
-/.github/               @bauer-group/ci
+/firmware/              @bauer-group/core
+/driver/                @bauer-group/core
+/userspace/             @bauer-group/core
+/docs/                  @bauer-group/core
+/hardware/              @bauer-group/core
+/.github/               @bauer-group/core
