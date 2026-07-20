@@ -21,6 +21,7 @@ concurrency:
 
 permissions:
   contents: write   # publish Release + attach artefacts
+  packages: read  # Pull internal/private GHCR packages
 
 jobs:
   firmware:
