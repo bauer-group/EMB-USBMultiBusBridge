@@ -12,7 +12,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "sunday"
+      time: "13:30"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(ci)"
@@ -21,7 +23,9 @@ updates:
     directory: "/userspace"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "sunday"
+      time: "13:30"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(userspace)"
@@ -33,6 +37,8 @@ updates:
     directory: "/docs"
     schedule:
       interval: "monthly"
+      time: "13:30"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(docs)"
@@ -41,6 +47,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+      time: "13:30"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(firmware)"
